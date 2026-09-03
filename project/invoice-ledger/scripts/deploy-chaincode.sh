@@ -2,7 +2,7 @@
 set -euo pipefail
 
 PROJECT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-DEFAULT_NETWORK="$PROJECT_ROOT/../../lab7/fabric-resources/fabric-resources/fabric-samples/test-network"
+DEFAULT_NETWORK="$PROJECT_ROOT/fabric-runtime/test-network"
 NETWORK_DIR="${FABRIC_TEST_NETWORK:-$DEFAULT_NETWORK}"
 
 if [[ ! -f "$NETWORK_DIR/network.sh" ]]; then

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 PROJECT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-DEFAULT_NETWORK="$PROJECT_ROOT/../../lab7/fabric-resources/fabric-resources/fabric-samples/test-network"
+DEFAULT_NETWORK="$PROJECT_ROOT/fabric-runtime/test-network"
 export FABRIC_TEST_NETWORK="${FABRIC_TEST_NETWORK:-$DEFAULT_NETWORK}"
 
 # Optional local configuration for OCR and AI correction. The real .env file
