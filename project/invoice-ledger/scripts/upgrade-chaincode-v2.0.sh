@@ -11,5 +11,5 @@ if [[ ! -f "$NETWORK_DIR/network.sh" ]]; then
 fi
 
 cd "$NETWORK_DIR"
-echo "首次部署 invoice 链码：Version 2.0 / Sequence 1"
-bash ./network.sh deployCC -c mychannel -ccn invoice -ccp "$PROJECT_ROOT/chaincode" -ccl go -ccv 2.0 -ccs 1
+echo "升级 invoice 链码：Version 1.9 / Sequence 1 → Version 2.0 / Sequence 2"
+bash ./network.sh deployCC -c mychannel -ccn invoice -ccp "$PROJECT_ROOT/chaincode" -ccl go -ccv 2.0 -ccs 2

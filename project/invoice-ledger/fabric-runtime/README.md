@@ -4,7 +4,7 @@
 
 ```text
 fabric-runtime/
-├── bin/           peer、cryptogen、configtxgen、osnadmin
+├── bin/           peer、cryptogen、configtxgen、configtxlator、osnadmin、fabric-ca-client
 ├── config/        Fabric 配置文件
 └── test-network/  Fabric Test Network
 ```

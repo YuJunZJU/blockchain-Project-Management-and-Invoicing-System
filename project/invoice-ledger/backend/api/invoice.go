@@ -57,6 +57,17 @@ type InvoiceFlow struct {
 	Type      string `json:"type"`
 }
 
+type InvoiceVoidRequest struct {
+	Applicant     string `json:"applicant"`
+	CreatedAt     string `json:"createdAt"`
+	InvoiceID     string `json:"invoiceId"`
+	Reason        string `json:"reason"`
+	ReviewOpinion string `json:"reviewOpinion"`
+	Reviewer      string `json:"reviewer"`
+	Status        string `json:"status"`
+	UpdatedAt     string `json:"updatedAt"`
+}
+
 type HistoryRecord struct {
 	IsDelete  bool     `json:"isDelete"`
 	Timestamp string   `json:"timestamp"`
@@ -151,6 +162,11 @@ type voidRequest struct {
 	Reason string `json:"reason" binding:"required,min=2,max=200"`
 }
 
+type voidReviewRequest struct {
+	Decision string `json:"decision" binding:"required,oneof=APPROVE REJECT"`
+	Opinion  string `json:"opinion" binding:"required,min=2,max=1000"`
+}
+
 type verifyRequest struct {
 	DataHash string `json:"dataHash" binding:"required,len=64"`
 }
@@ -214,6 +230,9 @@ func RegisterRoutes(router *gin.Engine, authService *auth.Service, ocrService *i
 	group.GET("/invoices/:id", getInvoice)
 	group.POST("/invoices/:id/transfers", auth.RequireRole("ISSUER", "HOLDER", "PROJECT_MEMBER"), transferInvoice)
 	group.POST("/invoices/:id/void", auth.RequireRole("ISSUER"), voidInvoice)
+	group.GET("/invoices/:id/void-request", getInvoiceVoidRequest)
+	group.POST("/invoices/:id/void-request", auth.RequireRole("PROJECT_MEMBER"), requestInvoiceVoid)
+	group.POST("/invoices/:id/void-request/review", auth.RequireRole("ISSUER"), reviewInvoiceVoid)
 	group.GET("/invoices/:id/flows", getFlows)
 	group.GET("/invoices/:id/history", getHistory)
 	group.POST("/invoices/:id/verify", verifyInvoice)
@@ -741,6 +760,74 @@ func voidInvoice(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "发票已作废，原始链上记录及历史已保留"})
+}
+
+func getInvoiceVoidRequest(c *gin.Context) {
+	contract, ok := contractForRequest(c)
+	if !ok {
+		return
+	}
+	result, err := contract.EvaluateTransaction("ReadInvoiceVoidRequest", c.Param("id"))
+	if err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			c.JSON(http.StatusOK, nil)
+			return
+		}
+		transactionError(c, err)
+		return
+	}
+	var request InvoiceVoidRequest
+	if err := json.Unmarshal(result, &request); err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, request)
+}
+
+func requestInvoiceVoid(c *gin.Context) {
+	var request voidRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		badRequest(c, err)
+		return
+	}
+	principal, ok := auth.PrincipalFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "请先登录"})
+		return
+	}
+	contract, ok := contractForRequest(c)
+	if !ok {
+		return
+	}
+	_, err := contract.SubmitTransaction("RequestInvoiceVoid", c.Param("id"), strings.TrimSpace(request.Reason), principal.Username)
+	if err != nil {
+		transactionError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "作废申请已提交，等待开票员审核"})
+}
+
+func reviewInvoiceVoid(c *gin.Context) {
+	var request voidReviewRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		badRequest(c, err)
+		return
+	}
+	principal, ok := auth.PrincipalFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "请先登录"})
+		return
+	}
+	contract, ok := contractForRequest(c)
+	if !ok {
+		return
+	}
+	_, err := contract.SubmitTransaction("ReviewInvoiceVoid", c.Param("id"), request.Decision, strings.TrimSpace(request.Opinion), principal.Username)
+	if err != nil {
+		transactionError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "作废申请已完成审核"})
 }
 
 func getFlows(c *gin.Context) {

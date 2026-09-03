@@ -17,6 +17,7 @@ const (
 	projectEventPrefix         = "PROJECT_EVENT#"
 	reimbursementPrefix        = "REIMBURSEMENT#"
 	reimbursementInvoicePrefix = "REIMBURSEMENT_INVOICE#"
+	voidRequestPrefix          = "VOID_REQUEST#"
 	userPrefix                 = "USER#"
 	organizationPrefix         = "ORGANIZATION#"
 )
@@ -57,6 +58,20 @@ type InvoiceFlow struct {
 	To        string `json:"to"`
 	TxID      string `json:"txId"`
 	Type      string `json:"type"`
+}
+
+// InvoiceVoidRequest records a project member's request to cancel an invoice.
+// The request itself does not change the invoice. Only an issuer can approve it
+// and create the final VOIDED state.
+type InvoiceVoidRequest struct {
+	Applicant     string `json:"applicant"`
+	CreatedAt     string `json:"createdAt"`
+	InvoiceID     string `json:"invoiceId"`
+	Reason        string `json:"reason"`
+	ReviewOpinion string `json:"reviewOpinion"`
+	Reviewer      string `json:"reviewer"`
+	Status        string `json:"status"`
+	UpdatedAt     string `json:"updatedAt"`
 }
 
 // BusinessUser is an application-level participant. Its record is stored on
@@ -155,6 +170,7 @@ func organizationKey(id string) string                { return organizationPrefi
 func projectKey(id string) string                     { return projectPrefix + id }
 func reimbursementKey(id string) string               { return reimbursementPrefix + id }
 func reimbursementInvoiceKey(invoiceID string) string { return reimbursementInvoicePrefix + invoiceID }
+func voidRequestKey(invoiceID string) string          { return voidRequestPrefix + invoiceID }
 
 // CreateInvoice writes an invoice into the normal project/reimbursement flow.
 // The buyer is an invoice business field, while initialHolder is the current
@@ -334,6 +350,128 @@ func (s *InvoiceContract) VoidInvoice(ctx contractapi.TransactionContextInterfac
 		return err
 	}
 	return s.createFlow(ctx, id, "VOID", from, "VOIDED", callerMSP, now)
+}
+
+// RequestInvoiceVoid lets the applicant of an invoice-linked project request
+// cancellation. The issuer reviews it before the invoice can be voided.
+func (s *InvoiceContract) RequestInvoiceVoid(ctx contractapi.TransactionContextInterface, id, reason, applicant string) error {
+	invoice, err := s.ReadInvoice(ctx, id)
+	if err != nil {
+		return err
+	}
+	reason, applicant = strings.TrimSpace(reason), strings.TrimSpace(applicant)
+	if reason == "" || applicant == "" {
+		return fmt.Errorf("void request reason and applicant must not be empty")
+	}
+	if invoice.Status == "VOIDED" {
+		return fmt.Errorf("invoice %s is already voided", id)
+	}
+	if invoice.ProjectID == "" {
+		return fmt.Errorf("only an invoice linked to a project can use the void-request process")
+	}
+	project, err := s.ReadProject(ctx, invoice.ProjectID)
+	if err != nil {
+		return fmt.Errorf("read linked project: %w", err)
+	}
+	if project.Applicant != applicant {
+		return fmt.Errorf("only the applicant of project %s can request this invoice to be voided", project.Name)
+	}
+	callerMSP, err := callerMSPID(ctx)
+	if err != nil {
+		return err
+	}
+	if callerMSP != project.ApplicantMSPID {
+		return fmt.Errorf("only project organization %s can submit this void request", project.ApplicantMSPID)
+	}
+	request, err := s.ReadInvoiceVoidRequest(ctx, id)
+	if err != nil && !isMissingVoidRequest(err) {
+		return err
+	}
+	if request != nil && request.Status == "PENDING_REVIEW" {
+		return fmt.Errorf("this invoice already has a pending void request")
+	}
+	now, err := transactionTime(ctx)
+	if err != nil {
+		return err
+	}
+	if request == nil {
+		request = &InvoiceVoidRequest{InvoiceID: id, CreatedAt: now}
+	}
+	request.Applicant, request.Reason, request.Status, request.UpdatedAt = applicant, reason, "PENDING_REVIEW", now
+	request.Reviewer, request.ReviewOpinion = "", ""
+	if err := putJSON(ctx, voidRequestKey(id), request); err != nil {
+		return err
+	}
+	return s.createFlow(ctx, id, "VOID_REQUEST", applicant, "ISSUER_REVIEW", callerMSP, now)
+}
+
+// ReviewInvoiceVoid keeps cancellation authority with the issuer organization.
+func (s *InvoiceContract) ReviewInvoiceVoid(ctx contractapi.TransactionContextInterface, id, decision, opinion, reviewer string) error {
+	invoice, err := s.ReadInvoice(ctx, id)
+	if err != nil {
+		return err
+	}
+	request, err := s.ReadInvoiceVoidRequest(ctx, id)
+	if err != nil {
+		return err
+	}
+	decision, opinion, reviewer = strings.ToUpper(strings.TrimSpace(decision)), strings.TrimSpace(opinion), strings.TrimSpace(reviewer)
+	if request.Status != "PENDING_REVIEW" {
+		return fmt.Errorf("void request for invoice %s is not pending review", id)
+	}
+	if (decision != "APPROVE" && decision != "REJECT") || opinion == "" || reviewer == "" {
+		return fmt.Errorf("void review requires APPROVE or REJECT, an opinion, and a reviewer")
+	}
+	callerMSP, err := callerMSPID(ctx)
+	if err != nil {
+		return err
+	}
+	if callerMSP != invoice.IssuerMSPID {
+		return fmt.Errorf("only issuer organization %s can review this void request", invoice.IssuerMSPID)
+	}
+	now, err := transactionTime(ctx)
+	if err != nil {
+		return err
+	}
+	request.Reviewer, request.ReviewOpinion, request.UpdatedAt = reviewer, opinion, now
+	if decision == "REJECT" {
+		request.Status = "REJECTED"
+		if err := putJSON(ctx, voidRequestKey(id), request); err != nil {
+			return err
+		}
+		return s.createFlow(ctx, id, "VOID_REJECTED", reviewer, request.Applicant, callerMSP, now)
+	}
+	if invoice.Status == "VOIDED" {
+		return fmt.Errorf("invoice %s is already voided", id)
+	}
+	request.Status = "APPROVED"
+	invoice.Status, invoice.VoidReason, invoice.UpdatedAt = "VOIDED", request.Reason, now
+	if err := putJSON(ctx, invoiceKey(id), invoice); err != nil {
+		return err
+	}
+	if err := putJSON(ctx, voidRequestKey(id), request); err != nil {
+		return err
+	}
+	return s.createFlow(ctx, id, "VOID", invoice.CurrentHolder, "VOIDED", callerMSP, now)
+}
+
+func (s *InvoiceContract) ReadInvoiceVoidRequest(ctx contractapi.TransactionContextInterface, id string) (*InvoiceVoidRequest, error) {
+	data, err := ctx.GetStub().GetState(voidRequestKey(strings.TrimSpace(id)))
+	if err != nil {
+		return nil, fmt.Errorf("read void request: %w", err)
+	}
+	if data == nil {
+		return nil, fmt.Errorf("void request for invoice %s does not exist", id)
+	}
+	var request InvoiceVoidRequest
+	if err := json.Unmarshal(data, &request); err != nil {
+		return nil, fmt.Errorf("decode void request: %w", err)
+	}
+	return &request, nil
+}
+
+func isMissingVoidRequest(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "does not exist")
 }
 
 func (s *InvoiceContract) ReadInvoice(ctx contractapi.TransactionContextInterface, id string) (*Invoice, error) {
