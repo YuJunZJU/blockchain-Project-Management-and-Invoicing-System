@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>链证发票 · 发票存证与核验</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+  <link rel="stylesheet" href="/assets/feedback.css">
+  <link rel="stylesheet" href="/assets/registration.css">
+  <link rel="stylesheet" href="/assets/project.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#dashboard" data-view-link="dashboard"><span class="brand-mark">⌘</span><span>链证发票</span></a>
+      <p class="sidebar-caption">INVOICE &amp; PROJECT LEDGER</p>
+      <nav class="side-nav" aria-label="主菜单">
+        <button class="nav-item active" type="button" data-view="dashboard"><span>▦</span>工作概览</button>
+        <p>业务管理</p>
+        <button class="nav-item" type="button" data-view="members"><span>♙</span>成员名录</button>
+        <button class="nav-item" type="button" data-view="projects"><span>◫</span>项目管理</button>
+        <button class="nav-item" type="button" data-view="create"><span>＋</span>发票存证</button>
+        <button class="nav-item" type="button" data-view="ledger"><span>▤</span>发票账本</button>
+        <button class="nav-item" type="button" data-view="reimbursements"><span>¥</span>报销支付</button>
+        <p>工具</p>
+        <button class="nav-item" type="button" data-view="verify"><span>✓</span>发票核验</button>
+      </nav>
+      <div class="sidebar-bottom"><span class="network"><i></i> Fabric · mychannel</span><div class="user-session"><span id="principal-name">未登录</span><button id="open-register" class="text-button">注册</button><button id="logout" class="text-button" hidden>退出</button></div></div>
+    </aside>
+
+    <main id="top" class="container">
+    <section id="global-alert" class="global-alert" role="alert" hidden><div><strong id="alert-title">操作未完成</strong><p id="alert-message"></p></div><button id="close-alert" aria-label="关闭提示">×</button></section>
+    <section id="dashboard" class="app-view active">
+      <div class="mobile-page-title"><span>工作概览</span><small>Fabric · mychannel</small></div>
+      <section class="hero">
+      <div><p class="eyebrow">INVOICE EVIDENCE ON BLOCKCHAIN</p><h1>让每一张发票<br>都有可信流转轨迹。</h1><p class="hero-copy">基于 Hyperledger Fabric 的发票存证、流转与核验应用。关键要素和内容指纹上链，状态可查、流转可溯、真伪可验。</p></div>
+      <div class="hero-card"><span>账本状态</span><strong>可信运行中</strong><small>数据由联盟链共识确认</small><div class="chain-line"><b></b><b></b><b></b><b></b></div></div>
+      </section>
+
+      <section id="identity-banner" class="identity-banner" hidden><span>当前登录身份</span><strong id="identity-name"></strong><b id="identity-role"></b><small id="identity-msp"></small></section>
+
+      <section class="metrics" aria-label="账本统计">
+      <article><span>链上发票</span><strong id="metric-total">—</strong><small>已完成存证的记录</small></article>
+      <article><span>流转中</span><strong id="metric-circulating">—</strong><small>当前处于流转状态</small></article>
+      <article><span>累计含税金额</span><strong id="metric-amount">—</strong><small>人民币（CNY）</small></article>
+      </section>
+    </section>
+
+    <section id="members" class="panel members-panel app-view">
+      <div class="section-heading"><div><p class="eyebrow">ON-CHAIN DIRECTORY</p><h2>系统成员名录</h2><p>展示已在 Fabric 中注册的业务人员及其所属组织、岗位和账号。</p></div><button id="refresh-members" class="secondary">刷新名录</button></div>
+      <div class="toolbar member-toolbar"><input id="member-search" type="search" placeholder="按姓名、账号、组织或岗位检索"><span id="member-count"></span></div>
+      <div id="member-rows" class="member-grid"><p class="empty">登录后读取链上成员名录…</p></div>
+    </section>
+
+    <section id="projects" class="panel project-panel app-view">
+      <div class="section-heading"><div><p class="eyebrow">01 · PROJECT</p><h2>项目申请与资金池</h2><p>项目申请、审核意见、预算额度和结项材料摘要均留存于 Fabric。</p></div><button id="refresh-projects" class="secondary">刷新项目</button></div>
+      <div id="project-create-wrap"><form id="project-form" class="form-grid project-form"><input name="id" type="hidden"><label>项目名称<input name="name" required maxlength="100" placeholder="例如 智能巡检机器人"></label><label>预期结项日期<input name="expectedEndDate" type="date" required></label><label class="wide-field">项目内容<textarea name="content" required maxlength="2000" placeholder="填写项目目标、主要内容与预期时间线节点"></textarea></label><label>申请预算（元）<input name="budget" type="number" min="0.01" step="0.01" required placeholder="0.00"></label><div class="form-action"><button type="submit"><span id="project-submit-label">保存项目草稿</span> <span>→</span></button></div></form><p id="project-result" class="result" hidden></p></div>
+      <div class="table-wrap project-table-wrap"><table><thead><tr><th>项目</th><th>预算 / 资金池</th><th>申请人</th><th>预期结项</th><th>状态</th><th></th></tr></thead><tbody id="project-rows"><tr><td colspan="6" class="empty">登录后读取链上项目…</td></tr></tbody></table></div>
+    </section>
+
+    <section id="create" class="panel create-panel app-view">
+      <div class="section-heading"><div><p class="eyebrow">02 · EVIDENCE</p><h2>创建链上存证</h2><p>提交后系统计算内容指纹，并将发票与首次流转记录写入 Fabric。</p></div><span class="step-badge">SHA-256</span></div>
+      <form id="invoice-form" class="form-grid">
+        <label>发票 ID <input name="id" required maxlength="48" placeholder="例如 INV-2026-0001"></label>
+        <label>发票号码 <input name="invoiceNo" required maxlength="48" placeholder="例如 031002600111"></label>
+        <label>开票日期 <input name="issueDate" type="date" required></label>
+        <label>销售方 <input name="issuer" required placeholder="例如 星河科技有限公司"></label>
+        <label>购买方（链上接收人账号）<input name="buyer" list="holder-options" required placeholder="先注册流转员账号，例如 xiaoming"></label>
+        <label>购买方组织 <select name="buyerMspId"><option value="Org2MSP">Org2MSP（默认流转方）</option><option value="Org1MSP">Org1MSP</option></select></label>
+        <label>关联项目（可选）<div class="select-with-button"><select name="projectId" id="invoice-project"><option value="">不关联项目</option></select><button id="invoice-project-detail" class="secondary compact" type="button" disabled>详情</button></div></label>
+        <label>金额（元）<input name="amount" type="number" min="0" step="0.01" required placeholder="0.00"></label>
+        <label>税额（元）<input name="tax" type="number" min="0" step="0.01" required placeholder="0.00"></label>
+        <label>币种 <select name="currency"><option value="CNY">CNY 人民币</option><option value="USD">USD 美元</option></select></label>
+        <div class="form-action"><button type="submit">生成存证并上链 <span>→</span></button></div>
+      </form>
+      <datalist id="holder-options"></datalist>
+      <p id="create-result" class="result" hidden></p>
+    </section>
+
+    <section id="ledger" class="panel ledger-panel app-view">
+      <div class="section-heading"><div><p class="eyebrow">03 · LEDGER</p><h2>发票账本</h2><p>世界状态提供当前记录，详情可追溯每次上链变更。</p></div><button id="refresh" class="secondary">刷新数据</button></div>
+      <div class="toolbar"><input id="search" type="search" placeholder="按发票 ID、号码、企业名称检索"><span id="invoice-count"></span></div>
+      <div class="table-wrap"><table><thead><tr><th>发票</th><th>销售方 / 购买方</th><th>含税金额</th><th>当前持有人</th><th>状态</th><th></th></tr></thead><tbody id="invoice-rows"><tr><td colspan="6" class="empty">正在读取 Fabric 账本…</td></tr></tbody></table></div>
+    </section>
+
+    <section id="reimbursements" class="panel reimbursement-panel app-view">
+      <div class="section-heading"><div><p class="eyebrow">04 · REIMBURSEMENT</p><h2>报销单与支付</h2><p>报销审核通过时系统冻结项目额度；财务支付后计入已支付金额。</p></div><button id="refresh-reimbursements" class="secondary">刷新报销</button></div>
+      <div id="reimbursement-create-wrap"><form id="reimbursement-form" class="form-grid"><label>关联项目<div class="select-with-button"><select name="projectId" id="reimbursement-project" required><option value="">请选择执行中的项目</option></select><button id="reimbursement-project-detail" class="secondary compact" type="button" disabled>详情</button></div></label><label>选择发票<div class="select-with-button"><select name="invoiceId" id="reimbursement-invoice" required disabled><option value="">请先选择项目</option></select><button id="reimbursement-invoice-detail" class="secondary compact" type="button" disabled>详情</button></div></label><label class="wide-field">材料说明<input name="evidence" required maxlength="4000" placeholder="例如：已上传支付截图；材料费采购用于项目原型制作"></label><div class="form-action"><button type="submit">提交报销审核 <span>→</span></button></div></form><p id="reimbursement-result" class="result" hidden></p></div>
+      <div class="table-wrap"><table><thead><tr><th>报销单</th><th>项目 / 发票</th><th>金额</th><th>申请人</th><th>状态</th><th></th></tr></thead><tbody id="reimbursement-rows"><tr><td colspan="6" class="empty">登录后读取链上报销单…</td></tr></tbody></table></div>
+    </section>
+
+    <section id="verify" class="verify-layout app-view">
+      <div class="panel verify-panel"><div class="section-heading"><div><p class="eyebrow">05 · VERIFY</p><h2>发票核验</h2><p>输入发票 ID 与内容指纹，验证展示内容是否与链上存证一致。</p></div></div>
+        <form id="verify-form"><label>发票 ID<input id="verify-id" required placeholder="INV-2026-0001"></label><label>内容指纹（SHA-256）<input id="verify-hash" required minlength="64" maxlength="64" placeholder="64 位十六进制哈希"></label><button type="submit">立即核验</button></form>
+        <div id="verify-result" class="verify-result muted">尚未进行核验</div>
+      </div>
+      <aside class="security-note"><span>✦</span><h3>为什么可信？</h3><p>Fabric 账本中的状态更新和键级历史均由交易背书、排序和区块提交保护。内容指纹不匹配，即表示待验内容与链上存证不一致。</p></aside>
+    </section>
+    </main>
+  </div>
+
+  <dialog id="detail-dialog"><article class="dialog-card"><button id="close-dialog" class="close" aria-label="关闭">×</button><div id="detail-content"></div></article></dialog>
+  <dialog id="login-dialog"><article class="login-card">
+    <section id="login-view"><p class="eyebrow">FABRIC IDENTITY DEMO</p><h2>登录链证项目管理</h2><p>演示账户与新注册的业务账户都可登录。交易会使用对应组织的 Fabric 测试证书签名。</p><form id="login-form"><label>登录账号<input name="username" list="account-options" required placeholder="例如 project-member 或自己注册的账号"></label><datalist id="account-options"><option value="issuer-org1">Org1 开票员</option><option value="holder-org2">Org2 流转专员</option><option value="auditor">审计查看员</option><option value="project-member">项目组成员</option><option value="project-reviewer">项目管理审核员</option><option value="finance-admin">财务管理员</option></datalist><label>密码<input name="password" type="password" required placeholder="请输入密码"></label><p id="login-error" class="form-error" hidden></p><button type="submit">登录并连接账本</button></form><button id="show-register" class="secondary switch-button" type="button">没有业务账户？去注册</button><div class="account-hint"><b>内置演示账户密码</b><br>项目组成员：member123<br>项目管理审核员：review123<br>财务管理员：finance123<br>原发票演示账户：issuer123 / holder123 / auditor123</div></section>
+    <section id="register-view" hidden><p class="eyebrow">ON-CHAIN BUSINESS USER</p><h2>注册业务用户</h2><p>姓名、组织和岗位将写入 Fabric 账本；密码仅以哈希形式保存在本机，绝不会上链。</p><form id="register-form"><label>登录账号<input name="username" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_-]+" placeholder="3-32 位英文、数字、_ 或 -"></label><label>姓名 / 主体名称<input name="displayName" required maxlength="48" placeholder="例如 小明或云帆贸易"></label><label>所属组织<select name="mspId"><option value="Org1MSP">Org1MSP（开票组织）</option><option value="Org2MSP">Org2MSP（流转组织）</option></select></label><label>岗位<select name="role"><option value="PROJECT_MEMBER">项目组成员（可申请项目、创建报销）</option><option value="PROJECT_REVIEWER">项目管理审核员</option><option value="FINANCE_ADMIN">财务管理员（确认支付）</option><option value="HOLDER">流转员（可作为接收持有人）</option><option value="ISSUER">开票员（可创建、作废）</option><option value="AUDITOR">审计员（只读）</option></select></label><label>登录密码<input name="password" type="password" required minlength="6" placeholder="至少 6 位"></label><label>确认密码<input name="confirmPassword" type="password" required minlength="6" placeholder="再次输入密码"></label><p id="register-error" class="form-error" hidden></p><button type="submit">注册并写入区块链</button></form><button id="show-login" class="secondary switch-button" type="button">返回登录</button></section>
+  </article></dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

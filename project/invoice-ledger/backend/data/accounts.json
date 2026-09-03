@@ -1,0 +1,18 @@
+[
+  {
+    "displayName": "与君",
+    "mspId": "Org1MSP",
+    "role": "HOLDER",
+    "username": "yujun123",
+    "passwordHash": "a98cfd3c9b315aaf647f56a9ecec2c1273c3bb428753271677e850e675c25ce8",
+    "salt": "Xd25djSETxeQ_Xv9gEBxBeX2Oh7BZp6irwu2KwfluBM"
+  },
+  {
+    "displayName": "小明",
+    "mspId": "Org2MSP",
+    "role": "HOLDER",
+    "username": "xiaoming",
+    "passwordHash": "57f810d758b03eac9758faa9b96ad73435f63ea87ab1f277099de1219ce7259e",
+    "salt": "u-x1QnzKfVgeEt2SrbIMmE61tfyeYD5zR5xElXhTnhs"
+  }
+]
