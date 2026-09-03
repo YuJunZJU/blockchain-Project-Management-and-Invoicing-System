@@ -60,6 +60,11 @@
 
     <section id="create" class="panel create-panel app-view">
       <div class="section-heading"><div><p class="eyebrow">02 · EVIDENCE</p><h2>创建链上存证</h2><p>提交后系统计算内容指纹，并将发票与首次流转记录写入 Fabric。</p></div><span class="step-badge">SHA-256</span></div>
+      <section id="ocr-drop-zone" class="ocr-card" aria-label="OCR 发票识别">
+        <div><p class="eyebrow">ALIYUN UNIFIED OCR · AI ASSIST</p><h3>上传发票，自动识别并回填</h3><p>支持图片和 PDF；可点击选择，或将文件拖入此区域。OCR 结果需经人工确认，AI 仅提供可见的纠偏建议，不会自动上链。</p></div>
+        <div class="ocr-actions"><label class="file-picker"><input id="ocr-file" type="file" accept=".png,.jpg,.jpeg,.bmp,.gif,.tiff,.webp,.pdf"><span>选择发票文件</span></label><button id="ocr-recognize" type="button" class="secondary" disabled>开始识别</button></div>
+        <p id="ocr-file-name" class="ocr-file-name">尚未选择文件</p><div id="ocr-result" class="ocr-result" hidden></div>
+      </section>
       <form id="invoice-form" class="form-grid">
         <label>发票 ID <input name="id" required maxlength="48" placeholder="例如 INV-2026-0001"></label>
         <label>发票号码 <input name="invoiceNo" required maxlength="48" placeholder="例如 031002600111"></label>

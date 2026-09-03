@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 
 	"invoice-ledger-api/auth"
 	"invoice-ledger-api/fabric"
+	invoiceocr "invoice-ledger-api/ocr"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hyperledger/fabric-gateway/pkg/client"
@@ -171,7 +173,7 @@ type reimbursementRequest struct {
 	ProjectID string `json:"projectId" binding:"required,max=48"`
 }
 
-func RegisterRoutes(router *gin.Engine, authService *auth.Service) {
+func RegisterRoutes(router *gin.Engine, authService *auth.Service, ocrService *invoiceocr.Service) {
 	authGroup := router.Group("/api/auth")
 	authGroup.POST("/login", authService.Login)
 	authGroup.POST("/register", registerUser(authService))
@@ -181,6 +183,7 @@ func RegisterRoutes(router *gin.Engine, authService *auth.Service) {
 	group := router.Group("/api")
 	group.Use(authService.Require())
 	group.GET("/users", getBusinessUsers)
+	group.POST("/ocr/invoice", auth.RequireRole("ISSUER", "PROJECT_MEMBER"), recognizeInvoice(ocrService))
 	group.GET("/invoices", getInvoices)
 	group.POST("/invoices", auth.RequireRole("ISSUER", "PROJECT_MEMBER"), createInvoice)
 	group.GET("/invoices/:id", getInvoice)
@@ -201,6 +204,35 @@ func RegisterRoutes(router *gin.Engine, authService *auth.Service) {
 	group.POST("/reimbursements", auth.RequireRole("PROJECT_MEMBER", "ISSUER"), createReimbursement)
 	group.POST("/reimbursements/:id/review", auth.RequireRole("PROJECT_REVIEWER"), reviewReimbursement)
 	group.POST("/reimbursements/:id/pay", auth.RequireRole("FINANCE_ADMIN"), payReimbursement)
+}
+
+// recognizeInvoice accepts a source document only for the duration of OCR.
+// It deliberately does not save the original file or write it to Fabric.
+func recognizeInvoice(service *invoiceocr.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !service.Enabled() {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "OCR 服务尚未配置。请联系管理员设置阿里云 AccessKey 后重试。"})
+			return
+		}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 11<<20)
+		file, header, err := c.Request.FormFile("file")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "请选择一张不超过 10MB 的发票图片或 PDF 文件。"})
+			return
+		}
+		defer file.Close()
+		content, err := io.ReadAll(io.LimitReader(file, 10<<20+1))
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		result, err := service.RecognizeInvoice(header.Filename, content)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	}
 }
 
 // registerUser records the business participant in Fabric first, then stores

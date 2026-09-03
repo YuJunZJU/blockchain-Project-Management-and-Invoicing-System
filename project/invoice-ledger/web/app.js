@@ -1,7 +1,8 @@
-const state = { invoices: [], principal: null, projects: [], reimbursements: [], users: [], editingProjectId: null };
+const state = { invoices: [], principal: null, projects: [], reimbursements: [], users: [], editingProjectId: null, ocrFile: null, ocrSuggestion: null };
 const $ = (selector) => document.querySelector(selector);
 const api = async (path, options = {}) => {
-  const response = await fetch(`/api${path}`, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options });
+  const defaultHeaders = options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' };
+  const response = await fetch(`/api${path}`, { credentials: 'same-origin', headers: { ...defaultHeaders, ...(options.headers || {}) }, ...options });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (response.status === 401 && path !== '/auth/me') showLogin();
@@ -26,6 +27,61 @@ function switchView(view, updateHash = true) {
   document.querySelectorAll('[data-view]').forEach(item => item.classList.toggle('active', item.dataset.view === view));
   if (updateHash) history.replaceState(null, '', `#${view}`);
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function applyOCRFields(fields) {
+  const form = $('#invoice-form');
+  if (!fields) return;
+  if (fields.invoiceNo) form.elements.invoiceNo.value = fields.invoiceNo;
+  if (fields.issueDate) form.elements.issueDate.value = fields.issueDate;
+  if (fields.issuer) form.elements.issuer.value = fields.issuer;
+  if (Number.isFinite(fields.amountCents) && fields.amountCents >= 0) form.elements.amount.value = (fields.amountCents / 100).toFixed(2);
+  if (Number.isFinite(fields.taxCents) && fields.taxCents >= 0) form.elements.tax.value = (fields.taxCents / 100).toFixed(2);
+  if (!form.elements.id.value && fields.invoiceNo) {
+    const date = (fields.issueDate || new Date().toISOString().slice(0, 10)).replaceAll('-', '');
+    form.elements.id.value = `INV-${date}-${fields.invoiceNo.replace(/[^A-Za-z0-9]/g, '').slice(-8)}`;
+  }
+  const matchingHolders = state.users.filter(user => user.status === 'ACTIVE' && user.role === 'HOLDER' && user.displayName === fields.buyerName);
+  if (matchingHolders.length === 1) {
+    form.elements.buyer.value = matchingHolders[0].username;
+    form.elements.buyerMspId.value = matchingHolders[0].mspId;
+  }
+}
+
+function renderOCRResult(result) {
+  const node = $('#ocr-result'); const fields = result.fields || {}; const suggestions = result.suggestedFields;
+  state.ocrSuggestion = suggestions || null;
+  const corrections = (result.corrections || []).map(item => `<li><b>${safe(item.field)}</b>：${safe(item.from)} → ${safe(item.to)}<small>${safe(item.reason)}</small></li>`).join('');
+  const warnings = (result.warnings || []).map(item => `<li>${safe(item)}</li>`).join('');
+  const holderMatch = state.users.filter(user => user.status === 'ACTIVE' && user.role === 'HOLDER' && user.displayName === fields.buyerName);
+  node.hidden = false;
+  node.innerHTML = `<div class="ocr-result-heading"><strong>已读取：${safe(fields.invoiceNo || '未识别发票号码')}</strong><span>${result.aiUsed ? 'OCR + AI 纠偏建议已生成' : '阿里云 OCR 识别完成'}</span></div>
+    <div class="ocr-fields"><span>销售方<b>${safe(fields.issuer || '—')}</b></span><span>购买方名称<b>${safe(fields.buyerName || '—')}</b></span><span>价税合计<b>${money(fields.totalCents || 0)}</b></span></div>
+    ${holderMatch.length === 1 ? `<p class="ocr-note">已匹配链上流转员：<b>${safe(holderMatch[0].username)}</b>，并自动填入购买方账号。</p>` : '<p class="ocr-note">购买方名称不会直接作为链上接收人账号；请从已注册的流转员账号中确认或手动填写。</p>'}
+    ${warnings ? `<div class="ocr-warning"><b>需要确认</b><ul>${warnings}</ul></div>` : ''}
+    ${corrections ? `<div class="ocr-corrections"><b>AI 纠偏建议</b><ul>${corrections}</ul>${suggestions ? '<button id="apply-ocr-suggestion" type="button" class="secondary compact">应用建议并回填</button>' : ''}</div>` : (suggestions ? '<div class="ocr-corrections"><b>AI 未发现明确需要修正的字段</b></div>' : '')}`;
+  $('#apply-ocr-suggestion')?.addEventListener('click', () => { applyOCRFields(state.ocrSuggestion); toast('已应用 AI 建议；请继续人工核对后再上链'); });
+}
+
+async function recognizeInvoiceFile() {
+  const file = state.ocrFile;
+  if (!file) return;
+  const button = $('#ocr-recognize'); const resultNode = $('#ocr-result');
+  button.disabled = true; button.textContent = '识别中…'; resultNode.hidden = true;
+  try {
+    const payload = new FormData(); payload.append('file', file, file.name);
+    const result = await api('/ocr/invoice', { method: 'POST', body: payload });
+    applyOCRFields(result.fields); renderOCRResult(result); toast('OCR 已完成基础回填，请人工确认后上链');
+  } catch (error) { showAlert(error.message, '发票 OCR 识别失败'); }
+  finally { button.disabled = !state.ocrFile; button.textContent = '开始识别'; }
+}
+
+function setOCRFile(file) {
+  if (!file) return;
+  state.ocrFile = file;
+  $('#ocr-file-name').textContent = `${file.name} · ${(file.size / 1024 / 1024).toFixed(2)} MB`;
+  $('#ocr-recognize').disabled = false;
+  $('#ocr-result').hidden = true;
 }
 
 function toast(message, error = false) {
@@ -391,6 +447,14 @@ $('#register-form').addEventListener('submit', async event => {
 $('#logout').addEventListener('click', async () => { await api('/auth/logout', { method: 'POST' }); state.principal = null; state.invoices = []; state.users = []; state.projects = []; state.reimbursements = []; applyPrincipal(); $('#invoice-rows').innerHTML = '<tr><td colspan="6" class="empty">请登录后查看账本</td></tr>'; $('#project-rows').innerHTML = '<tr><td colspan="6" class="empty">请登录后查看项目</td></tr>'; $('#reimbursement-rows').innerHTML = '<tr><td colspan="6" class="empty">请登录后查看报销单</td></tr>'; $('#member-rows').innerHTML = '<p class="empty">请登录后查看链上成员名录</p>'; showLoginView(); });
 $('#search').addEventListener('input', renderInvoices);
 $('#member-search').addEventListener('input', renderMembers);
+$('#ocr-file').addEventListener('change', event => { if (event.currentTarget.files[0]) setOCRFile(event.currentTarget.files[0]); });
+['dragenter', 'dragover'].forEach(type => $('#ocr-drop-zone').addEventListener(type, event => { event.preventDefault(); event.stopPropagation(); $('#ocr-drop-zone').classList.add('dragging'); }));
+['dragleave', 'drop'].forEach(type => $('#ocr-drop-zone').addEventListener(type, event => { event.preventDefault(); event.stopPropagation(); $('#ocr-drop-zone').classList.remove('dragging'); }));
+$('#ocr-drop-zone').addEventListener('drop', event => {
+  const file = event.dataTransfer?.files?.[0];
+  if (file) setOCRFile(file);
+});
+$('#ocr-recognize').addEventListener('click', recognizeInvoiceFile);
 $('#refresh').addEventListener('click', loadInvoices);
 $('#refresh-members').addEventListener('click', loadUsers);
 $('#refresh-projects').addEventListener('click', loadProjects);

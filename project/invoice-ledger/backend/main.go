@@ -8,6 +8,7 @@ import (
 	"invoice-ledger-api/api"
 	"invoice-ledger-api/auth"
 	"invoice-ledger-api/fabric"
+	"invoice-ledger-api/ocr"
 
 	"github.com/gin-gonic/gin"
 )
@@ -23,7 +24,7 @@ func main() {
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "chaincode": fabric.ChaincodeName()})
 	})
-	api.RegisterRoutes(router, authService)
+	api.RegisterRoutes(router, authService, ocr.NewService())
 
 	webDir := os.Getenv("WEB_DIR")
 	if webDir == "" {

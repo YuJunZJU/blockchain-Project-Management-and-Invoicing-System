@@ -1,0 +1,8 @@
+# Secrets and local runtime data
+.env
+backend/data/accounts.json
+
+# Local/editor files
+*.log
+.DS_Store
+.vscode/
