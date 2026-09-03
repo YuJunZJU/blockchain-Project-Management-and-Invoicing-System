@@ -1,4 +1,4 @@
-const state = { invoices: [], principal: null, projects: [], reimbursements: [], users: [], editingProjectId: null, ocrFile: null, ocrSuggestion: null };
+const state = { invoices: [], organizations: [], registrationOrganizations: [], principal: null, projects: [], reimbursements: [], users: [], editingProjectId: null, ocrFile: null, ocrSuggestion: null };
 const $ = (selector) => document.querySelector(selector);
 const api = async (path, options = {}) => {
   const defaultHeaders = options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' };
@@ -16,8 +16,9 @@ const safe = (value = '') => String(value).replace(/[&<>'"]/g, char => ({ '&': '
 const statusText = (status) => ({ ISSUED: '已开具', IN_CIRCULATION: '流转中', VOIDED: '已作废' }[status] || status);
 const projectStatusText = (status) => ({ DRAFT: '草稿', PENDING_REVIEW: '待立项审核', REVISION_REQUIRED: '需修改', EXECUTING: '执行中', CLOSURE_REVIEW: '待结项审核', CLOSURE_APPROVED: '结项验收通过' }[status] || status);
 const reimbursementStatusText = (status) => ({ PENDING_REVIEW: '待报销审核', REVISION_REQUIRED: '材料需修改', APPROVED_RESERVED: '已审核，额度已冻结', PAID: '已支付' }[status] || status);
-const roleText = (role) => ({ ISSUER: '开票员', HOLDER: '跨组织流转员', AUDITOR: '审计员', PROJECT_MEMBER: '项目组成员', PROJECT_REVIEWER: '项目管理审核员', FINANCE_ADMIN: '财务管理员' }[role] || role);
-const organizationText = (mspId) => ({ Org1MSP: 'Org1 · 开票组织', Org2MSP: 'Org2 · 流转组织' }[mspId] || mspId);
+const roleText = (role) => ({ ISSUER: '开票员', HOLDER: '跨组织流转员', AUDITOR: '审计员', PROJECT_MEMBER: '项目组成员', PROJECT_REVIEWER: '项目管理审核员', FINANCE_ADMIN: '财务管理员', ORG_ADMIN: '组织管理员' }[role] || role);
+const organizationText = (mspId) => ({ Org1MSP: 'Org1 · Fabric 节点 1', Org2MSP: 'Org2 · Fabric 节点 2' }[mspId] || mspId);
+const organizationTypeText = (type) => ({ PRIMARY: '主体组织', PROJECT_TEAM: '公司内部项目组', EXTERNAL: '外部协作组织' }[type] || type);
 const hasRole = (...roles) => Boolean(state.principal && roles.includes(state.principal.role));
 
 function switchView(view, updateHash = true) {
@@ -97,6 +98,7 @@ function showRegister() {
   $('#login-view').hidden = true;
   $('#register-view').hidden = false;
   showLogin();
+  loadRegistrationOrganizations();
 }
 
 function showLoginView() {
@@ -113,11 +115,14 @@ function applyPrincipal() {
   $('#create').hidden = !principal || !hasRole('ISSUER', 'PROJECT_MEMBER');
   $('#project-create-wrap').hidden = !principal || !hasRole('ISSUER', 'PROJECT_MEMBER');
   $('#reimbursement-create-wrap').hidden = !principal || !hasRole('ISSUER', 'PROJECT_MEMBER');
+  $('#organization-create-wrap').hidden = !principal || !hasRole('ORG_ADMIN');
+  $('#organization-permission-note').hidden = !!principal && hasRole('ORG_ADMIN');
   $('#identity-banner').hidden = !principal;
   if (principal) {
     $('#identity-name').textContent = principal.displayName;
     $('#identity-role').textContent = roleText(principal.role);
-    $('#identity-msp').textContent = principal.mspId;
+    const organization = state.organizations.find(item => item.id === principal.organizationId) || state.registrationOrganizations.find(item => item.id === principal.organizationId);
+    $('#identity-msp').textContent = organization ? `${organization.name} · ${principal.mspId}` : principal.mspId;
   }
 }
 
@@ -126,22 +131,73 @@ function renderHolderOptions() {
   $('#holder-options').innerHTML = holders.map(user => `<option value="${safe(user.username)}">${safe(user.displayName)} · ${safe(user.mspId)}</option>`).join('');
 }
 
-function renderMembers() {
-  const keyword = $('#member-search').value.trim().toLowerCase();
-  const users = [...state.users]
-    .sort((left, right) => left.mspId.localeCompare(right.mspId) || left.displayName.localeCompare(right.displayName, 'zh-CN'))
-    .filter(user => !keyword || [user.displayName, user.username, user.mspId, roleText(user.role)].join(' ').toLowerCase().includes(keyword));
-  $('#member-count').textContent = `共 ${users.length} 位链上成员`;
-  $('#member-rows').innerHTML = users.length ? users.map(user => `<article class="member-card ${user.username === state.principal?.username ? 'is-current' : ''}">
-    <div class="member-avatar">${safe(user.displayName.slice(0, 1))}</div><div class="member-main"><div class="member-name"><strong>${safe(user.displayName)}</strong>${user.username === state.principal?.username ? '<span>当前登录</span>' : ''}</div><small>@${safe(user.username)}</small></div>
-    <div class="member-meta"><span>所属组织</span><b>${safe(organizationText(user.mspId))}</b></div><div class="member-meta"><span>岗位</span><b>${safe(roleText(user.role))}</b></div><span class="member-status">${user.status === 'ACTIVE' ? '在用' : safe(user.status)}</span>
-  </article>`).join('') : '<p class="empty">没有符合条件的链上成员</p>';
-}
-
 async function loadUsers() {
   if (!state.principal) return;
-  try { state.users = await api('/users'); renderHolderOptions(); renderMembers(); }
-  catch (error) { $('#member-rows').innerHTML = `<p class="empty">${safe(error.message)}</p>`; showAlert(error.message, '链上用户读取失败'); }
+  try { state.users = await api('/users'); renderHolderOptions(); renderOrganizations(); }
+  catch (error) { showAlert(error.message, '链上用户读取失败'); }
+}
+
+function updateOrganizationParentOptions() {
+  const isProjectTeam = $('#organization-type').value === 'PROJECT_TEAM';
+  const wrap = $('#organization-parent-wrap'); const select = $('#organization-parent');
+  wrap.hidden = !isProjectTeam;
+  if (!isProjectTeam) { select.value = ''; return; }
+  const primaryOrganizations = state.organizations.filter(item => item.type === 'PRIMARY' && item.status === 'ACTIVE');
+  const selected = select.value;
+  select.innerHTML = primaryOrganizations.length
+    ? `<option value="">请选择主体组织</option>${primaryOrganizations.map(item => `<option value="${safe(item.id)}">${safe(item.name)}</option>`).join('')}`
+    : '<option value="">请先登记主体组织</option>';
+  select.disabled = primaryOrganizations.length === 0;
+  if (primaryOrganizations.some(item => item.id === selected)) select.value = selected;
+}
+
+function renderOrganizations() {
+  const organizations = [...state.organizations].sort((left, right) => left.type.localeCompare(right.type) || left.name.localeCompare(right.name, 'zh-CN'));
+  $('#organization-rows').innerHTML = organizations.length ? organizations.map(item => {
+    const parent = state.organizations.find(candidate => candidate.id === item.parentId);
+    const memberCount = state.users.filter(user => user.organizationId === item.id && user.status === 'ACTIVE').length;
+    return `<article class="organization-card" data-organization-detail="${safe(item.id)}"><div class="organization-card-heading"><span class="organization-type ${safe(item.type.toLowerCase())}">${safe(organizationTypeText(item.type))}</span><span class="member-status">${item.status === 'ACTIVE' ? '在用' : safe(item.status)}</span></div><h3>${safe(item.name)}</h3><p>${safe(item.description || '暂无组织说明')}</p><dl><div><dt>上级主体</dt><dd>${safe(parent?.name || '—')}</dd></div><div><dt>链上接入节点</dt><dd>${safe(organizationText(item.mspId))}</dd></div><div><dt>登记人</dt><dd>@${safe(item.createdBy)}</dd></div></dl><button class="secondary organization-members-button" type="button" data-organization-detail="${safe(item.id)}">查看成员（${memberCount}）</button></article>`;
+  }).join('') : '<p class="empty">暂无链上业务组织。请先由组织管理员登记主体组织。</p>';
+  updateOrganizationParentOptions();
+}
+
+async function loadOrganizations() {
+  if (!state.principal) return;
+  try { state.organizations = await api('/organizations'); renderOrganizations(); }
+  catch (error) { $('#organization-rows').innerHTML = `<p class="empty">${safe(error.message)}</p>`; showAlert(error.message, '组织目录读取失败'); }
+}
+
+async function loadRegistrationOrganizations() {
+  const select = $('#registration-organization'); const hint = $('#registration-organization-hint'); const submit = $('#register-submit');
+  select.disabled = true; submit.disabled = true;
+  select.innerHTML = '<option value="">正在读取组织目录…</option>';
+  try {
+    state.registrationOrganizations = await api('/auth/organizations');
+    const organizations = state.registrationOrganizations.filter(item => item.status === 'ACTIVE');
+    select.innerHTML = organizations.length
+      ? `<option value="">请选择所属业务组织</option>${organizations.map(item => `<option value="${safe(item.id)}">${safe(item.name)} · ${safe(organizationTypeText(item.type))}</option>`).join('')}`
+      : '<option value="">尚未登记业务组织</option>';
+    select.disabled = organizations.length === 0;
+    submit.disabled = organizations.length === 0;
+    hint.hidden = organizations.length > 0;
+  } catch (error) {
+    select.innerHTML = '<option value="">组织目录读取失败</option>';
+    hint.hidden = false; hint.textContent = error.message;
+  }
+}
+
+function openOrganizationDetail(id) {
+  const organization = state.organizations.find(item => item.id === id);
+  if (!organization) return;
+  const parent = state.organizations.find(item => item.id === organization.parentId);
+  const members = state.users
+    .filter(user => user.organizationId === organization.id)
+    .sort((left, right) => left.displayName.localeCompare(right.displayName, 'zh-CN'));
+  $('#detail-content').innerHTML = `<p class="eyebrow">ON-CHAIN BUSINESS ORGANIZATION</p><h2 class="detail-title">${safe(organization.name)}</h2><p class="detail-sub">${safe(organizationTypeText(organization.type))} · ${safe(organization.status === 'ACTIVE' ? '在用' : organization.status)}</p>
+    <div class="details"><div><span>上级主体</span><b>${safe(parent?.name || '—')}</b></div><div><span>账本接入节点</span><b>${safe(organizationText(organization.mspId))}</b></div><div><span>登记人</span><b>@${safe(organization.createdBy)}</b></div><div><span>登记时间</span><b>${safe(organization.createdAt)}</b></div></div>
+    <div class="detail-section"><h3>组织说明</h3><p>${safe(organization.description || '暂无组织说明')}</p></div>
+    <div class="detail-section"><h3>组织成员（${members.length} 位）</h3>${members.length ? `<div class="organization-member-list">${members.map(user => `<div><span class="member-avatar">${safe(user.displayName.slice(0, 1))}</span><p><b>${safe(user.displayName)}</b><small>@${safe(user.username)} · ${safe(roleText(user.role))}</small></p><em>${safe(organizationText(user.mspId))}</em></div>`).join('')}</div>` : '<p class="detail-sub">该组织暂未绑定业务用户。请在注册页选择此组织后注册成员。</p>'}</div>`;
+  $('#detail-dialog').showModal();
 }
 
 function renderProjectOptions() {
@@ -222,7 +278,7 @@ async function loadReimbursements() {
   catch (error) { $('#reimbursement-rows').innerHTML = `<tr><td colspan="6" class="empty">${safe(error.message)}</td></tr>`; showAlert(error.message, '报销单读取失败'); }
 }
 
-async function reloadBusinessData() { await Promise.all([loadUsers(), loadInvoices(), loadProjects(), loadReimbursements()]); }
+async function reloadBusinessData() { await Promise.all([loadUsers(), loadOrganizations(), loadInvoices(), loadProjects(), loadReimbursements()]); }
 
 function updateMetrics() {
   const invoices = state.invoices;
@@ -402,6 +458,20 @@ $('#reimbursement-form').addEventListener('submit', async event => {
   } catch (error) { showAlert(error.message, '报销提交失败'); }
 });
 
+$('#organization-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const form = event.currentTarget; const payload = Object.fromEntries(new FormData(form));
+  const result = $('#organization-result'); result.hidden = true;
+  if (payload.type === 'PROJECT_TEAM' && !payload.parentId) {
+    showAlert('内部项目组必须选择一个已登记的主体组织。', '组织登记失败'); return;
+  }
+  try {
+    await api('/organizations', { method: 'POST', body: JSON.stringify(payload) });
+    result.hidden = false; result.textContent = '组织登记成功，组织档案已写入链上目录。';
+    form.reset(); updateOrganizationParentOptions(); await loadOrganizations(); toast('业务组织已登记并写入链上');
+  } catch (error) { showAlert(error.message, '组织登记失败'); }
+});
+
 $('#invoice-form').addEventListener('submit', async event => {
   event.preventDefault(); const formElement = event.currentTarget; const form = new FormData(formElement); const payload = Object.fromEntries(form); payload.amountCents = cents(payload.amount); payload.taxCents = cents(payload.tax); delete payload.amount; delete payload.tax;
   $('#create-result').hidden = true;
@@ -439,9 +509,8 @@ $('#register-form').addEventListener('submit', async event => {
   } catch (error) { errorNode.textContent = error.message; errorNode.hidden = false; }
 });
 
-$('#logout').addEventListener('click', async () => { await api('/auth/logout', { method: 'POST' }); state.principal = null; state.invoices = []; state.users = []; state.projects = []; state.reimbursements = []; applyPrincipal(); $('#invoice-rows').innerHTML = '<tr><td colspan="6" class="empty">请登录后查看账本</td></tr>'; $('#project-rows').innerHTML = '<tr><td colspan="6" class="empty">请登录后查看项目</td></tr>'; $('#reimbursement-rows').innerHTML = '<tr><td colspan="6" class="empty">请登录后查看报销单</td></tr>'; $('#member-rows').innerHTML = '<p class="empty">请登录后查看链上成员名录</p>'; showLoginView(); });
+$('#logout').addEventListener('click', async () => { await api('/auth/logout', { method: 'POST' }); state.principal = null; state.invoices = []; state.organizations = []; state.users = []; state.projects = []; state.reimbursements = []; applyPrincipal(); $('#invoice-rows').innerHTML = '<tr><td colspan="6" class="empty">请登录后查看账本</td></tr>'; $('#project-rows').innerHTML = '<tr><td colspan="6" class="empty">请登录后查看项目</td></tr>'; $('#reimbursement-rows').innerHTML = '<tr><td colspan="6" class="empty">请登录后查看报销单</td></tr>'; $('#organization-rows').innerHTML = '<p class="empty">请登录后查看链上组织目录</p>'; showLoginView(); });
 $('#search').addEventListener('input', renderInvoices);
-$('#member-search').addEventListener('input', renderMembers);
 $('#ocr-file').addEventListener('change', event => { if (event.currentTarget.files[0]) setOCRFile(event.currentTarget.files[0]); });
 ['dragenter', 'dragover'].forEach(type => $('#ocr-drop-zone').addEventListener(type, event => { event.preventDefault(); event.stopPropagation(); $('#ocr-drop-zone').classList.add('dragging'); }));
 ['dragleave', 'drop'].forEach(type => $('#ocr-drop-zone').addEventListener(type, event => { event.preventDefault(); event.stopPropagation(); $('#ocr-drop-zone').classList.remove('dragging'); }));
@@ -451,7 +520,7 @@ $('#ocr-drop-zone').addEventListener('drop', event => {
 });
 $('#ocr-recognize').addEventListener('click', recognizeInvoiceFile);
 $('#refresh').addEventListener('click', loadInvoices);
-$('#refresh-members').addEventListener('click', loadUsers);
+$('#refresh-organizations').addEventListener('click', loadOrganizations);
 $('#refresh-projects').addEventListener('click', loadProjects);
 $('#refresh-reimbursements').addEventListener('click', loadReimbursements);
 $('#invoice-rows').addEventListener('click', event => { const id = event.target.dataset.detail; if (id) openDetail(id); });
@@ -463,6 +532,8 @@ $('#reimbursement-invoice').addEventListener('change', () => { $('#reimbursement
 $('#invoice-project-detail').addEventListener('click', () => { const project = selectedProject('#invoice-project'); if (project) openProjectDetail(project.id); });
 $('#reimbursement-project-detail').addEventListener('click', () => { const project = selectedProject('#reimbursement-project'); if (project) openProjectDetail(project.id); });
 $('#reimbursement-invoice-detail').addEventListener('click', () => { const id = $('#reimbursement-invoice').value; if (id) openDetail(id); });
+$('#organization-type').addEventListener('change', updateOrganizationParentOptions);
+$('#organization-rows').addEventListener('click', event => { const id = event.target.closest('[data-organization-detail]')?.dataset.organizationDetail; if (id) openOrganizationDetail(id); });
 $('#close-dialog').addEventListener('click', () => $('#detail-dialog').close());
 $('#close-alert').addEventListener('click', () => { $('#global-alert').hidden = true; });
 document.addEventListener('pointerdown', event => { const alert = $('#global-alert'); if (!alert.hidden && !alert.contains(event.target)) alert.hidden = true; });

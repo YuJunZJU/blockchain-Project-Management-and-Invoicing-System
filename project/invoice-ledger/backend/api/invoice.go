@@ -65,12 +65,25 @@ type HistoryRecord struct {
 }
 
 type BusinessUser struct {
+	CreatedAt      string `json:"createdAt"`
+	DisplayName    string `json:"displayName"`
+	MSPID          string `json:"mspId"`
+	OrganizationID string `json:"organizationId"`
+	Role           string `json:"role"`
+	Status         string `json:"status"`
+	Username       string `json:"username"`
+}
+
+type BusinessOrganization struct {
 	CreatedAt   string `json:"createdAt"`
-	DisplayName string `json:"displayName"`
+	CreatedBy   string `json:"createdBy"`
+	Description string `json:"description"`
+	ID          string `json:"id"`
 	MSPID       string `json:"mspId"`
-	Role        string `json:"role"`
+	Name        string `json:"name"`
+	ParentID    string `json:"parentId"`
 	Status      string `json:"status"`
-	Username    string `json:"username"`
+	Type        string `json:"type"`
 }
 
 type Project struct {
@@ -143,11 +156,19 @@ type verifyRequest struct {
 }
 
 type registerRequest struct {
-	DisplayName string `json:"displayName" binding:"required,min=2,max=48"`
+	DisplayName    string `json:"displayName" binding:"required,min=2,max=48"`
+	OrganizationID string `json:"organizationId" binding:"required,max=48"`
+	Password       string `json:"password" binding:"required,min=6,max=72"`
+	Role           string `json:"role" binding:"required,oneof=ISSUER HOLDER AUDITOR PROJECT_MEMBER PROJECT_REVIEWER FINANCE_ADMIN ORG_ADMIN"`
+	Username       string `json:"username" binding:"required,min=3,max=32"`
+}
+
+type organizationRequest struct {
+	Description string `json:"description" binding:"max=1000"`
 	MSPID       string `json:"mspId" binding:"required,oneof=Org1MSP Org2MSP"`
-	Password    string `json:"password" binding:"required,min=6,max=72"`
-	Role        string `json:"role" binding:"required,oneof=ISSUER HOLDER AUDITOR PROJECT_MEMBER PROJECT_REVIEWER FINANCE_ADMIN"`
-	Username    string `json:"username" binding:"required,min=3,max=32"`
+	Name        string `json:"name" binding:"required,min=2,max=100"`
+	ParentID    string `json:"parentId" binding:"max=48"`
+	Type        string `json:"type" binding:"required,oneof=PRIMARY PROJECT_TEAM EXTERNAL"`
 }
 
 type projectRequest struct {
@@ -180,10 +201,13 @@ func RegisterRoutes(router *gin.Engine, authService *auth.Service, ocrService *i
 	authGroup.POST("/register", registerUser(authService))
 	authGroup.POST("/logout", authService.Logout)
 	authGroup.GET("/me", authService.Me)
+	authGroup.GET("/organizations", getPublicBusinessOrganizations)
 
 	group := router.Group("/api")
 	group.Use(authService.Require())
 	group.GET("/users", getBusinessUsers)
+	group.GET("/organizations", getBusinessOrganizations)
+	group.POST("/organizations", auth.RequireRole("ORG_ADMIN"), createBusinessOrganization)
 	group.POST("/ocr/invoice", auth.RequireRole("ISSUER", "PROJECT_MEMBER"), recognizeInvoice(ocrService))
 	group.GET("/invoices", getInvoices)
 	group.POST("/invoices", auth.RequireRole("ISSUER", "PROJECT_MEMBER"), createInvoice)
@@ -247,16 +271,36 @@ func registerUser(authService *auth.Service) gin.HandlerFunc {
 		}
 		request.Username = strings.TrimSpace(request.Username)
 		request.DisplayName = strings.TrimSpace(request.DisplayName)
-		contract, err := fabric.ContractFor(request.MSPID)
+		request.OrganizationID = strings.TrimSpace(request.OrganizationID)
+		directory, err := fabric.ContractFor("Org1MSP")
 		if err != nil {
 			serverError(c, err)
 			return
 		}
-		if _, err := contract.SubmitTransaction("RegisterBusinessUser", request.Username, request.DisplayName, request.MSPID, request.Role); err != nil {
+		organizationResult, err := directory.EvaluateTransaction("ReadBusinessOrganization", request.OrganizationID)
+		if err != nil {
 			transactionError(c, err)
 			return
 		}
-		principal := auth.Principal{Username: request.Username, DisplayName: request.DisplayName, MSPID: request.MSPID, Role: request.Role}
+		var organization BusinessOrganization
+		if err := json.Unmarshal(organizationResult, &organization); err != nil {
+			serverError(c, err)
+			return
+		}
+		if organization.Status != "ACTIVE" {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "所选业务组织已停用，请选择其他组织。"})
+			return
+		}
+		contract, err := fabric.ContractFor(organization.MSPID)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		if _, err := contract.SubmitTransaction("RegisterBusinessUser", request.Username, request.DisplayName, organization.MSPID, request.Role, organization.ID); err != nil {
+			transactionError(c, err)
+			return
+		}
+		principal := auth.Principal{Username: request.Username, DisplayName: request.DisplayName, MSPID: organization.MSPID, OrganizationID: organization.ID, Role: request.Role}
 		if err := authService.RegisterAccount(principal, request.Password); err != nil {
 			serverError(c, err)
 			return
@@ -324,6 +368,71 @@ func getBusinessUsers(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, users)
+}
+
+func createBusinessOrganization(c *gin.Context) {
+	var request organizationRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		badRequest(c, err)
+		return
+	}
+	principal, ok := auth.PrincipalFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "请先登录"})
+		return
+	}
+	request.Name = strings.TrimSpace(request.Name)
+	request.Type = strings.ToUpper(strings.TrimSpace(request.Type))
+	request.ParentID = strings.TrimSpace(request.ParentID)
+	request.Description = strings.TrimSpace(request.Description)
+	contract, err := fabric.ContractFor(request.MSPID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	id := newBusinessID("ORG")
+	if _, err := contract.SubmitTransaction("CreateBusinessOrganization", id, request.Name, request.Type, request.ParentID, request.Description, principal.Username); err != nil {
+		transactionError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "业务组织已登记并写入链上", "id": id})
+}
+
+func getPublicBusinessOrganizations(c *gin.Context) {
+	contract, err := fabric.ContractFor("Org1MSP")
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	result, err := contract.EvaluateTransaction("GetAllBusinessOrganizations")
+	if err != nil {
+		transactionError(c, err)
+		return
+	}
+	organizations, err := decodeList[BusinessOrganization](result)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, organizations)
+}
+
+func getBusinessOrganizations(c *gin.Context) {
+	contract, ok := contractForRequest(c)
+	if !ok {
+		return
+	}
+	result, err := contract.EvaluateTransaction("GetAllBusinessOrganizations")
+	if err != nil {
+		transactionError(c, err)
+		return
+	}
+	organizations, err := decodeList[BusinessOrganization](result)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, organizations)
 }
 
 func createProject(c *gin.Context) {

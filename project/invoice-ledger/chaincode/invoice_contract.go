@@ -18,6 +18,7 @@ const (
 	reimbursementPrefix        = "REIMBURSEMENT#"
 	reimbursementInvoicePrefix = "REIMBURSEMENT_INVOICE#"
 	userPrefix                 = "USER#"
+	organizationPrefix         = "ORGANIZATION#"
 )
 
 // Invoice is the on-chain business record. Monetary values use cents to avoid
@@ -62,12 +63,28 @@ type InvoiceFlow struct {
 // the ledger, while the actual transaction is still signed by the test
 // certificate representing the participant's organization.
 type BusinessUser struct {
+	CreatedAt      string `json:"createdAt"`
+	DisplayName    string `json:"displayName"`
+	MSPID          string `json:"mspId"`
+	OrganizationID string `json:"organizationId"`
+	Role           string `json:"role"`
+	Status         string `json:"status"`
+	Username       string `json:"username"`
+}
+
+// BusinessOrganization represents an application-level organization. It is
+// distinct from Fabric MSPs: the course network still has only Org1MSP and
+// Org2MSP as technical blockchain organizations.
+type BusinessOrganization struct {
 	CreatedAt   string `json:"createdAt"`
-	DisplayName string `json:"displayName"`
+	CreatedBy   string `json:"createdBy"`
+	Description string `json:"description"`
+	ID          string `json:"id"`
 	MSPID       string `json:"mspId"`
-	Role        string `json:"role"`
+	Name        string `json:"name"`
+	ParentID    string `json:"parentId"`
 	Status      string `json:"status"`
-	Username    string `json:"username"`
+	Type        string `json:"type"`
 }
 
 // Project is a budget-controlled project application and delivery record.
@@ -134,6 +151,7 @@ type InvoiceContract struct {
 
 func invoiceKey(id string) string                     { return invoicePrefix + id }
 func userKey(username string) string                  { return userPrefix + username }
+func organizationKey(id string) string                { return organizationPrefix + id }
 func projectKey(id string) string                     { return projectPrefix + id }
 func reimbursementKey(id string) string               { return reimbursementPrefix + id }
 func reimbursementInvoiceKey(invoiceID string) string { return reimbursementInvoicePrefix + invoiceID }
@@ -341,11 +359,12 @@ func (s *InvoiceContract) InvoiceExists(ctx contractapi.TransactionContextInterf
 // RegisterBusinessUser creates an immutable business-user registration. This
 // is deliberately different from issuing an X.509 certificate: in this course
 // network a representative User1 certificate signs for each organization.
-func (s *InvoiceContract) RegisterBusinessUser(ctx contractapi.TransactionContextInterface, username, displayName, mspID, role string) error {
+func (s *InvoiceContract) RegisterBusinessUser(ctx contractapi.TransactionContextInterface, username, displayName, mspID, role, organizationID string) error {
 	username = strings.TrimSpace(username)
 	displayName = strings.TrimSpace(displayName)
 	mspID = strings.TrimSpace(mspID)
 	role = strings.ToUpper(strings.TrimSpace(role))
+	organizationID = strings.TrimSpace(organizationID)
 	if username == "" || displayName == "" {
 		return fmt.Errorf("username and display name must not be empty")
 	}
@@ -365,6 +384,16 @@ func (s *InvoiceContract) RegisterBusinessUser(ctx contractapi.TransactionContex
 	if callerMSP != mspID {
 		return fmt.Errorf("only %s can register a user for %s", mspID, mspID)
 	}
+	organization, err := s.ReadBusinessOrganization(ctx, organizationID)
+	if err != nil {
+		return fmt.Errorf("business organization: %w", err)
+	}
+	if organization.Status != "ACTIVE" {
+		return fmt.Errorf("business organization %s is not active", organization.Name)
+	}
+	if organization.MSPID != mspID {
+		return fmt.Errorf("business organization %s belongs to %s, not %s", organization.Name, organization.MSPID, mspID)
+	}
 	exists, err := s.BusinessUserExists(ctx, username)
 	if err != nil {
 		return err
@@ -376,7 +405,7 @@ func (s *InvoiceContract) RegisterBusinessUser(ctx contractapi.TransactionContex
 	if err != nil {
 		return err
 	}
-	return putJSON(ctx, userKey(username), BusinessUser{Username: username, DisplayName: displayName, MSPID: mspID, Role: role, Status: "ACTIVE", CreatedAt: now})
+	return putJSON(ctx, userKey(username), BusinessUser{Username: username, DisplayName: displayName, MSPID: mspID, OrganizationID: organizationID, Role: role, Status: "ACTIVE", CreatedAt: now})
 }
 
 func (s *InvoiceContract) ReadBusinessUser(ctx contractapi.TransactionContextInterface, username string) (*BusinessUser, error) {
@@ -419,6 +448,99 @@ func (s *InvoiceContract) GetAllBusinessUsers(ctx contractapi.TransactionContext
 		users = append(users, &user)
 	}
 	return users, nil
+}
+
+// CreateBusinessOrganization registers a business organization on the ledger.
+// It does not create a Fabric peer, MSP, or certificate; those are network
+// administrator operations outside this web application.
+func (s *InvoiceContract) CreateBusinessOrganization(ctx contractapi.TransactionContextInterface, id, name, organizationType, parentID, description, creator string) error {
+	id = strings.TrimSpace(id)
+	name = strings.TrimSpace(name)
+	organizationType = strings.ToUpper(strings.TrimSpace(organizationType))
+	parentID = strings.TrimSpace(parentID)
+	description = strings.TrimSpace(description)
+	creator = strings.TrimSpace(creator)
+	if id == "" || name == "" || creator == "" {
+		return fmt.Errorf("organization id, name and creator must not be empty")
+	}
+	if strings.ContainsAny(id, "#\x00") {
+		return fmt.Errorf("organization id contains an unsupported character")
+	}
+	if !validBusinessOrganizationType(organizationType) {
+		return fmt.Errorf("unsupported organization type %s", organizationType)
+	}
+	if organizationType == "PROJECT_TEAM" {
+		if parentID == "" {
+			return fmt.Errorf("a project team must select its parent primary organization")
+		}
+		parent, err := s.ReadBusinessOrganization(ctx, parentID)
+		if err != nil {
+			return fmt.Errorf("parent organization: %w", err)
+		}
+		if parent.Type != "PRIMARY" {
+			return fmt.Errorf("a project team must belong to a primary organization")
+		}
+	} else if parentID != "" {
+		return fmt.Errorf("only a project team can have a parent organization")
+	}
+	exists, err := s.BusinessOrganizationExists(ctx, id)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return fmt.Errorf("business organization %s already exists", id)
+	}
+	mspID, err := callerMSPID(ctx)
+	if err != nil {
+		return err
+	}
+	now, err := transactionTime(ctx)
+	if err != nil {
+		return err
+	}
+	organization := BusinessOrganization{ID: id, Name: name, Type: organizationType, ParentID: parentID, Description: description, MSPID: mspID, Status: "ACTIVE", CreatedBy: creator, CreatedAt: now}
+	return putJSON(ctx, organizationKey(id), organization)
+}
+
+func (s *InvoiceContract) ReadBusinessOrganization(ctx contractapi.TransactionContextInterface, id string) (*BusinessOrganization, error) {
+	data, err := ctx.GetStub().GetState(organizationKey(strings.TrimSpace(id)))
+	if err != nil {
+		return nil, fmt.Errorf("read business organization: %w", err)
+	}
+	if data == nil {
+		return nil, fmt.Errorf("business organization %s does not exist", id)
+	}
+	var organization BusinessOrganization
+	if err := json.Unmarshal(data, &organization); err != nil {
+		return nil, fmt.Errorf("decode business organization: %w", err)
+	}
+	return &organization, nil
+}
+
+func (s *InvoiceContract) BusinessOrganizationExists(ctx contractapi.TransactionContextInterface, id string) (bool, error) {
+	data, err := ctx.GetStub().GetState(organizationKey(strings.TrimSpace(id)))
+	return data != nil, err
+}
+
+func (s *InvoiceContract) GetAllBusinessOrganizations(ctx contractapi.TransactionContextInterface) ([]*BusinessOrganization, error) {
+	iterator, err := ctx.GetStub().GetStateByRange(organizationPrefix, "ORGANIZATION$")
+	if err != nil {
+		return nil, err
+	}
+	defer iterator.Close()
+	organizations := make([]*BusinessOrganization, 0)
+	for iterator.HasNext() {
+		item, err := iterator.Next()
+		if err != nil {
+			return nil, err
+		}
+		var organization BusinessOrganization
+		if err := json.Unmarshal(item.Value, &organization); err != nil {
+			return nil, err
+		}
+		organizations = append(organizations, &organization)
+	}
+	return organizations, nil
 }
 
 func (s *InvoiceContract) requireActiveHolder(ctx contractapi.TransactionContextInterface, username, mspID string) error {
@@ -1084,5 +1206,9 @@ func validateBusinessMSPID(mspID string) error {
 }
 
 func validBusinessRole(role string) bool {
-	return role == "ISSUER" || role == "HOLDER" || role == "AUDITOR" || role == "PROJECT_MEMBER" || role == "PROJECT_REVIEWER" || role == "FINANCE_ADMIN"
+	return role == "ISSUER" || role == "HOLDER" || role == "AUDITOR" || role == "PROJECT_MEMBER" || role == "PROJECT_REVIEWER" || role == "FINANCE_ADMIN" || role == "ORG_ADMIN"
+}
+
+func validBusinessOrganizationType(organizationType string) bool {
+	return organizationType == "PRIMARY" || organizationType == "PROJECT_TEAM" || organizationType == "EXTERNAL"
 }

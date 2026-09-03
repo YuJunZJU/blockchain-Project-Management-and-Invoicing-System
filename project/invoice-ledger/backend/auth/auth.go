@@ -22,10 +22,11 @@ const principalKey = "principal"
 var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{3,32}$`)
 
 type Principal struct {
-	DisplayName string `json:"displayName"`
-	MSPID       string `json:"mspId"`
-	Role        string `json:"role"`
-	Username    string `json:"username"`
+	DisplayName    string `json:"displayName"`
+	MSPID          string `json:"mspId"`
+	OrganizationID string `json:"organizationId"`
+	Role           string `json:"role"`
+	Username       string `json:"username"`
 }
 
 type account struct {
@@ -60,6 +61,7 @@ func NewService() *Service {
 	service.addDemoAccount("project-member", "项目组成员", "Org1MSP", "PROJECT_MEMBER", envOr("DEMO_PROJECT_MEMBER_PASSWORD", "member123"))
 	service.addDemoAccount("project-reviewer", "项目管理审核员", "Org1MSP", "PROJECT_REVIEWER", envOr("DEMO_PROJECT_REVIEWER_PASSWORD", "review123"))
 	service.addDemoAccount("finance-admin", "财务管理员", "Org2MSP", "FINANCE_ADMIN", envOr("DEMO_FINANCE_ADMIN_PASSWORD", "finance123"))
+	service.addDemoAccount("org-admin", "组织管理员", "Org1MSP", "ORG_ADMIN", envOr("DEMO_ORG_ADMIN_PASSWORD", "orgadmin123"))
 	if err := service.loadAccounts(); err != nil {
 		fmt.Printf("warning: load local registered accounts failed: %v\n", err)
 	}
@@ -94,7 +96,7 @@ func (s *Service) RegisterAccount(principal Principal, password string) error {
 	if len(password) < 6 {
 		return fmt.Errorf("密码至少需要 6 位")
 	}
-	if principal.DisplayName == "" || !validMSPID(principal.MSPID) || !validRole(principal.Role) {
+	if principal.DisplayName == "" || principal.OrganizationID == "" || !validMSPID(principal.MSPID) || !validRole(principal.Role) {
 		return fmt.Errorf("注册信息不完整或不合法")
 	}
 	created, err := newAccount(principal, password)
@@ -232,7 +234,7 @@ func (s *Service) loadAccounts() error {
 func (s *Service) saveRegisteredAccountsLocked() error {
 	stored := make([]account, 0, len(s.accounts))
 	for username, current := range s.accounts {
-		if username != "issuer-org1" && username != "holder-org2" && username != "auditor" && username != "project-member" && username != "project-reviewer" && username != "finance-admin" {
+		if username != "issuer-org1" && username != "holder-org2" && username != "auditor" && username != "project-member" && username != "project-reviewer" && username != "finance-admin" && username != "org-admin" {
 			stored = append(stored, current)
 		}
 	}
@@ -273,7 +275,7 @@ func newToken() (string, error) {
 
 func validMSPID(mspID string) bool { return mspID == "Org1MSP" || mspID == "Org2MSP" }
 func validRole(role string) bool {
-	return role == "ISSUER" || role == "HOLDER" || role == "AUDITOR" || role == "PROJECT_MEMBER" || role == "PROJECT_REVIEWER" || role == "FINANCE_ADMIN"
+	return role == "ISSUER" || role == "HOLDER" || role == "AUDITOR" || role == "PROJECT_MEMBER" || role == "PROJECT_REVIEWER" || role == "FINANCE_ADMIN" || role == "ORG_ADMIN"
 }
 
 func envOr(name, fallback string) string {

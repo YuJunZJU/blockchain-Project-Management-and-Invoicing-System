@@ -129,6 +129,29 @@ dialog::backdrop { background: #37352f55; }
 .file-picker { border-color: #dededb; border-radius: 4px; color: #4a4a46; }.ocr-file-name { color: #787774 !important; }.ocr-note { border-radius: 4px; background: #f1f5f8; color: #5d5d59 !important; }
 #toast { border-radius: 4px; background: #37352f; box-shadow: 0 8px 24px #37352f2b; }
 
+.organization-create-wrap { margin: 24px 0 26px; padding: 22px; border: 1px solid #dbe7f0; border-radius: 5px; background: #f8fbfe; }
+.organization-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 24px; }
+.organization-card { padding: 18px; border: 1px solid #e1e8ee; border-radius: 5px; background: #fff; cursor: pointer; }
+.organization-card:hover { border-color: #bdd7ed; background: #fbfdff; }
+.organization-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.organization-type { padding: 3px 7px; border-radius: 3px; background: #e8f2fc; color: #3974ad; font-size: 12px; font-weight: 650; }
+.organization-type.project_team { background: #edf6ef; color: #3d7a53; }
+.organization-type.external { background: #fff4dd; color: #966b12; }
+.organization-card h3 { margin: 16px 0 6px; color: #30465d; font-size: 17px; }
+.organization-card > p { min-height: 40px; margin: 0 0 16px; color: #6a7c8f; font-size: 13px; line-height: 1.55; }
+.organization-card dl { display: grid; gap: 8px; margin: 0; }
+.organization-card dl div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.organization-card dt { color: #8a98a8; font-size: 12px; }
+.organization-card dd { margin: 0; color: #4e6479; font-size: 12px; text-align: right; }
+.organization-members-button { width: 100%; margin-top: 16px; }
+.organization-member-list { display: grid; gap: 8px; }
+.organization-member-list > div { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid #e7edf2; border-radius: 4px; background: #fbfdff; }
+.organization-member-list .member-avatar { display: inline-flex; flex: 0 0 30px; align-items: center; justify-content: center; width: 30px; height: 30px; }
+.organization-member-list p { flex: 1; margin: 0; }.organization-member-list p b, .organization-member-list p small { display: block; }.organization-member-list p small { margin-top: 2px; color: #77899a; }.organization-member-list em { color: #6a7f93; font-size: 12px; font-style: normal; text-align: right; }
+
+@media (max-width: 950px) { .organization-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .organization-grid { grid-template-columns: 1fr; }.organization-create-wrap { padding: 16px; } }
+
 @media (max-width: 800px) {
   .app-shell { padding-left: 0; }
   .sidebar { padding: 9px 12px; background: #fbfbfa; border-bottom: 1px solid #e8e8e6; }

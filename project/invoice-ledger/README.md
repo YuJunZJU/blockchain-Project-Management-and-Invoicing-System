@@ -23,6 +23,7 @@ invoice-ledger/
 ├── 区块链与系统架构学习指南.md  区块链与项目架构入门资料
 ├── 权限与升级说明.md        作废、多组织身份和角色权限操作说明
 ├── 项目与报销模块说明.md      项目申请、资金池与报销演示说明
+├── 组织管理说明.md            业务组织与 Fabric 技术组织的区别
 ├── 项目介绍.md             可直接扩展为提交材料的项目说明
 ├── 答辩材料大纲.md         PPT 与录屏脚本建议
 └── 团队分工模板.md         成员贡献登记模板
@@ -40,7 +41,7 @@ invoice-ledger/
 
 浏览器打开 `http://localhost:8080`。默认复用课程 `lab7` 目录中的 Fabric Test Network；若其不在默认位置，执行脚本前设置 `FABRIC_TEST_NETWORK` 为 `test-network` 的绝对路径。
 
-首次部署会使用当前的 `invoice` 链码 1.7 / Sequence 1。若已有旧链码定义，必须使用对应的升级脚本，不能重复执行普通部署脚本。
+首次部署会使用当前的 `invoice` 链码 1.9 / Sequence 1。若已有旧链码定义，必须使用对应的升级脚本，不能重复执行普通部署脚本。当前已经部署 1.8 / Sequence 2 的网络，请执行 `./scripts/upgrade-chaincode-v1.9.sh`。
 
 ## 核心接口
 
