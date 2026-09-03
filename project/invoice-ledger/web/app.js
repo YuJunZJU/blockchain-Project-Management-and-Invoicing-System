@@ -16,7 +16,7 @@ const safe = (value = '') => String(value).replace(/[&<>'"]/g, char => ({ '&': '
 const statusText = (status) => ({ ISSUED: '已开具', IN_CIRCULATION: '流转中', VOIDED: '已作废' }[status] || status);
 const projectStatusText = (status) => ({ DRAFT: '草稿', PENDING_REVIEW: '待立项审核', REVISION_REQUIRED: '需修改', EXECUTING: '执行中', CLOSURE_REVIEW: '待结项审核', CLOSURE_APPROVED: '结项验收通过' }[status] || status);
 const reimbursementStatusText = (status) => ({ PENDING_REVIEW: '待报销审核', REVISION_REQUIRED: '材料需修改', APPROVED_RESERVED: '已审核，额度已冻结', PAID: '已支付' }[status] || status);
-const roleText = (role) => ({ ISSUER: '开票员', HOLDER: '流转员', AUDITOR: '审计员', PROJECT_MEMBER: '项目组成员', PROJECT_REVIEWER: '项目管理审核员', FINANCE_ADMIN: '财务管理员' }[role] || role);
+const roleText = (role) => ({ ISSUER: '开票员', HOLDER: '跨组织流转员', AUDITOR: '审计员', PROJECT_MEMBER: '项目组成员', PROJECT_REVIEWER: '项目管理审核员', FINANCE_ADMIN: '财务管理员' }[role] || role);
 const organizationText = (mspId) => ({ Org1MSP: 'Org1 · 开票组织', Org2MSP: 'Org2 · 流转组织' }[mspId] || mspId);
 const hasRole = (...roles) => Boolean(state.principal && roles.includes(state.principal.role));
 
@@ -41,11 +41,7 @@ function applyOCRFields(fields) {
     const date = (fields.issueDate || new Date().toISOString().slice(0, 10)).replaceAll('-', '');
     form.elements.id.value = `INV-${date}-${fields.invoiceNo.replace(/[^A-Za-z0-9]/g, '').slice(-8)}`;
   }
-  const matchingHolders = state.users.filter(user => user.status === 'ACTIVE' && user.role === 'HOLDER' && user.displayName === fields.buyerName);
-  if (matchingHolders.length === 1) {
-    form.elements.buyer.value = matchingHolders[0].username;
-    form.elements.buyerMspId.value = matchingHolders[0].mspId;
-  }
+  if (fields.buyerName) form.elements.buyer.value = fields.buyerName;
 }
 
 function renderOCRResult(result) {
@@ -53,11 +49,10 @@ function renderOCRResult(result) {
   state.ocrSuggestion = suggestions || null;
   const corrections = (result.corrections || []).map(item => `<li><b>${safe(item.field)}</b>：${safe(item.from)} → ${safe(item.to)}<small>${safe(item.reason)}</small></li>`).join('');
   const warnings = (result.warnings || []).map(item => `<li>${safe(item)}</li>`).join('');
-  const holderMatch = state.users.filter(user => user.status === 'ACTIVE' && user.role === 'HOLDER' && user.displayName === fields.buyerName);
   node.hidden = false;
   node.innerHTML = `<div class="ocr-result-heading"><strong>已读取：${safe(fields.invoiceNo || '未识别发票号码')}</strong><span>${result.aiUsed ? 'OCR + AI 纠偏建议已生成' : '阿里云 OCR 识别完成'}</span></div>
     <div class="ocr-fields"><span>销售方<b>${safe(fields.issuer || '—')}</b></span><span>购买方名称<b>${safe(fields.buyerName || '—')}</b></span><span>价税合计<b>${money(fields.totalCents || 0)}</b></span></div>
-    ${holderMatch.length === 1 ? `<p class="ocr-note">已匹配链上流转员：<b>${safe(holderMatch[0].username)}</b>，并自动填入购买方账号。</p>` : '<p class="ocr-note">购买方名称不会直接作为链上接收人账号；请从已注册的流转员账号中确认或手动填写。</p>'}
+    <p class="ocr-note">购买方名称已回填。新发票默认由当前创建者负责；只有需要跨组织交接时，才需在详情中选择已注册的流转员。</p>
     ${warnings ? `<div class="ocr-warning"><b>需要确认</b><ul>${warnings}</ul></div>` : ''}
     ${corrections ? `<div class="ocr-corrections"><b>AI 纠偏建议</b><ul>${corrections}</ul>${suggestions ? '<button id="apply-ocr-suggestion" type="button" class="secondary compact">应用建议并回填</button>' : ''}</div>` : (suggestions ? '<div class="ocr-corrections"><b>AI 未发现明确需要修正的字段</b></div>' : '')}`;
   $('#apply-ocr-suggestion')?.addEventListener('click', () => { applyOCRFields(state.ocrSuggestion); toast('已应用 AI 建议；请继续人工核对后再上链'); });
@@ -256,9 +251,9 @@ async function loadInvoices() {
 }
 
 function transferForm(invoice) {
-  const allowed = state.principal.role === 'HOLDER' && invoice.status !== 'VOIDED' && invoice.holderMspId === state.principal.mspId;
-  if (!allowed) return '<p class="detail-sub">当前登录身份没有该发票的流转权限。</p>';
-  return `<form id="transfer-form" class="transfer-form"><label>下一持有人账号<input name="to" list="holder-options" required placeholder="选择或输入已注册的流转员账号"></label><label>接收组织<select name="toMspId"><option value="Org1MSP">Org1MSP</option><option value="Org2MSP">Org2MSP</option></select></label><div><small>仅链上已注册、且组织匹配的流转员可接收。交易由 ${safe(state.principal.mspId)} 的测试证书签名。</small></div><button type="submit">确认流转</button></form>`;
+  const allowed = hasRole('ISSUER', 'HOLDER', 'PROJECT_MEMBER') && invoice.status !== 'VOIDED' && invoice.currentHolder === state.principal.username && invoice.holderMspId === state.principal.mspId;
+  if (!allowed) return '<p class="detail-sub">该发票当前无需你处理。只有当前责任人可在确有跨组织交接需要时发起流转。</p>';
+  return `<form id="transfer-form" class="transfer-form"><label>下一位流转员账号<input name="to" list="holder-options" required placeholder="选择已注册的跨组织流转员"></label><label>接收组织<select name="toMspId"><option value="Org1MSP">Org1MSP</option><option value="Org2MSP">Org2MSP</option></select></label><div><small>这是可选的跨组织交接，不影响普通项目报销。接收方必须是链上已注册的流转员。</small></div><button type="submit">确认跨组织流转</button></form>`;
 }
 
 function voidForm(invoice) {
@@ -286,7 +281,7 @@ async function openDetail(id) {
 
 async function submitTransfer(event, id) {
   event.preventDefault();
-  try { await api(`/invoices/${encodeURIComponent(id)}/transfers`, { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))) }); toast('发票流转已由当前组织证书签名并上链'); $('#detail-dialog').close(); await loadInvoices(); }
+  try { await api(`/invoices/${encodeURIComponent(id)}/transfers`, { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))) }); toast('跨组织流转已由当前责任人确认并上链'); $('#detail-dialog').close(); await loadInvoices(); }
   catch (error) { showAlert(error.message, '流转失败'); }
 }
 

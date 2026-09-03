@@ -34,7 +34,6 @@
       <div class="mobile-page-title"><span>工作概览</span><small>Fabric · mychannel</small></div>
       <section class="hero">
       <div><p class="eyebrow">INVOICE EVIDENCE ON BLOCKCHAIN</p><h1>让每一张发票<br>都有可信流转轨迹。</h1><p class="hero-copy">基于 Hyperledger Fabric 的发票存证、流转与核验应用。关键要素和内容指纹上链，状态可查、流转可溯、真伪可验。</p></div>
-      <div class="hero-card"><span>账本状态</span><strong>可信运行中</strong><small>数据由联盟链共识确认</small><div class="chain-line"><b></b><b></b><b></b><b></b></div></div>
       </section>
 
       <section id="identity-banner" class="identity-banner" hidden><span>当前登录身份</span><strong id="identity-name"></strong><b id="identity-role"></b><small id="identity-msp"></small></section>
@@ -70,8 +69,8 @@
         <label>发票号码 <input name="invoiceNo" required maxlength="48" placeholder="例如 031002600111"></label>
         <label>开票日期 <input name="issueDate" type="date" required></label>
         <label>销售方 <input name="issuer" required placeholder="例如 星河科技有限公司"></label>
-        <label>购买方（链上接收人账号）<input name="buyer" list="holder-options" required placeholder="先注册流转员账号，例如 xiaoming"></label>
-        <label>购买方组织 <select name="buyerMspId"><option value="Org2MSP">Org2MSP（默认流转方）</option><option value="Org1MSP">Org1MSP</option></select></label>
+        <label>购买方名称<input name="buyer" required placeholder="例如 浙江大学"></label>
+        <label>购买方关联组织<select name="buyerMspId"><option value="Org1MSP">Org1MSP（校内项目默认）</option><option value="Org2MSP">Org2MSP（跨组织业务）</option></select></label>
         <label>关联项目（可选）<div class="select-with-button"><select name="projectId" id="invoice-project"><option value="">不关联项目</option></select><button id="invoice-project-detail" class="secondary compact" type="button" disabled>详情</button></div></label>
         <label>金额（元）<input name="amount" type="number" min="0" step="0.01" required placeholder="0.00"></label>
         <label>税额（元）<input name="tax" type="number" min="0" step="0.01" required placeholder="0.00"></label>
@@ -99,7 +98,6 @@
         <form id="verify-form"><label>发票 ID<input id="verify-id" required placeholder="INV-2026-0001"></label><label>内容指纹（SHA-256）<input id="verify-hash" required minlength="64" maxlength="64" placeholder="64 位十六进制哈希"></label><button type="submit">立即核验</button></form>
         <div id="verify-result" class="verify-result muted">尚未进行核验</div>
       </div>
-      <aside class="security-note"><span>✦</span><h3>为什么可信？</h3><p>Fabric 账本中的状态更新和键级历史均由交易背书、排序和区块提交保护。内容指纹不匹配，即表示待验内容与链上存证不一致。</p></aside>
     </section>
     </main>
   </div>
@@ -107,7 +105,7 @@
   <dialog id="detail-dialog"><article class="dialog-card"><button id="close-dialog" class="close" aria-label="关闭">×</button><div id="detail-content"></div></article></dialog>
   <dialog id="login-dialog"><article class="login-card">
     <section id="login-view"><p class="eyebrow">FABRIC IDENTITY DEMO</p><h2>登录链证项目管理</h2><p>演示账户与新注册的业务账户都可登录。交易会使用对应组织的 Fabric 测试证书签名。</p><form id="login-form"><label>登录账号<input name="username" list="account-options" required placeholder="例如 project-member 或自己注册的账号"></label><datalist id="account-options"><option value="issuer-org1">Org1 开票员</option><option value="holder-org2">Org2 流转专员</option><option value="auditor">审计查看员</option><option value="project-member">项目组成员</option><option value="project-reviewer">项目管理审核员</option><option value="finance-admin">财务管理员</option></datalist><label>密码<input name="password" type="password" required placeholder="请输入密码"></label><p id="login-error" class="form-error" hidden></p><button type="submit">登录并连接账本</button></form><button id="show-register" class="secondary switch-button" type="button">没有业务账户？去注册</button><div class="account-hint"><b>内置演示账户密码</b><br>项目组成员：member123<br>项目管理审核员：review123<br>财务管理员：finance123<br>原发票演示账户：issuer123 / holder123 / auditor123</div></section>
-    <section id="register-view" hidden><p class="eyebrow">ON-CHAIN BUSINESS USER</p><h2>注册业务用户</h2><p>姓名、组织和岗位将写入 Fabric 账本；密码仅以哈希形式保存在本机，绝不会上链。</p><form id="register-form"><label>登录账号<input name="username" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_-]+" placeholder="3-32 位英文、数字、_ 或 -"></label><label>姓名 / 主体名称<input name="displayName" required maxlength="48" placeholder="例如 小明或云帆贸易"></label><label>所属组织<select name="mspId"><option value="Org1MSP">Org1MSP（开票组织）</option><option value="Org2MSP">Org2MSP（流转组织）</option></select></label><label>岗位<select name="role"><option value="PROJECT_MEMBER">项目组成员（可申请项目、创建报销）</option><option value="PROJECT_REVIEWER">项目管理审核员</option><option value="FINANCE_ADMIN">财务管理员（确认支付）</option><option value="HOLDER">流转员（可作为接收持有人）</option><option value="ISSUER">开票员（可创建、作废）</option><option value="AUDITOR">审计员（只读）</option></select></label><label>登录密码<input name="password" type="password" required minlength="6" placeholder="至少 6 位"></label><label>确认密码<input name="confirmPassword" type="password" required minlength="6" placeholder="再次输入密码"></label><p id="register-error" class="form-error" hidden></p><button type="submit">注册并写入区块链</button></form><button id="show-login" class="secondary switch-button" type="button">返回登录</button></section>
+    <section id="register-view" hidden><p class="eyebrow">ON-CHAIN BUSINESS USER</p><h2>注册业务用户</h2><p>姓名、组织和岗位将写入 Fabric 账本；密码仅以哈希形式保存在本机，绝不会上链。</p><form id="register-form"><label>登录账号<input name="username" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_-]+" placeholder="3-32 位英文、数字、_ 或 -"></label><label>姓名 / 主体名称<input name="displayName" required maxlength="48" placeholder="例如 小明或云帆贸易"></label><label>所属组织<select name="mspId"><option value="Org1MSP">Org1MSP（项目组织）</option><option value="Org2MSP">Org2MSP（协作组织）</option></select></label><label>岗位<select name="role"><option value="PROJECT_MEMBER">项目组成员（可申请项目、创建报销）</option><option value="PROJECT_REVIEWER">项目管理审核员</option><option value="FINANCE_ADMIN">财务管理员（确认支付）</option><option value="HOLDER">跨组织流转员（可选，负责交接）</option><option value="ISSUER">开票员（可创建、作废）</option><option value="AUDITOR">审计员（只读）</option></select></label><label>登录密码<input name="password" type="password" required minlength="6" placeholder="至少 6 位"></label><label>确认密码<input name="confirmPassword" type="password" required minlength="6" placeholder="再次输入密码"></label><p id="register-error" class="form-error" hidden></p><button type="submit">注册并写入区块链</button></form><button id="show-login" class="secondary switch-button" type="button">返回登录</button></section>
   </article></dialog>
   <div id="toast" role="status" aria-live="polite"></div>
   <script src="/assets/app.js"></script>

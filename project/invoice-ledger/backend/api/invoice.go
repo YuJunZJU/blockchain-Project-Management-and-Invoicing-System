@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -187,7 +188,7 @@ func RegisterRoutes(router *gin.Engine, authService *auth.Service, ocrService *i
 	group.GET("/invoices", getInvoices)
 	group.POST("/invoices", auth.RequireRole("ISSUER", "PROJECT_MEMBER"), createInvoice)
 	group.GET("/invoices/:id", getInvoice)
-	group.POST("/invoices/:id/transfers", auth.RequireRole("HOLDER"), transferInvoice)
+	group.POST("/invoices/:id/transfers", auth.RequireRole("ISSUER", "HOLDER", "PROJECT_MEMBER"), transferInvoice)
 	group.POST("/invoices/:id/void", auth.RequireRole("ISSUER"), voidInvoice)
 	group.GET("/invoices/:id/flows", getFlows)
 	group.GET("/invoices/:id/history", getHistory)
@@ -271,12 +272,17 @@ func createInvoice(c *gin.Context) {
 		return
 	}
 	request.normalize()
+	principal, ok := auth.PrincipalFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "请先登录"})
+		return
+	}
 	contract, ok := contractForRequest(c)
 	if !ok {
 		return
 	}
 	hash := invoiceHash(request)
-	_, err := contract.SubmitTransaction("CreateInvoice", request.ID, request.InvoiceNo, request.IssueDate, request.Issuer, request.Buyer, request.BuyerMSPID, strconv.FormatInt(request.AmountCents, 10), strconv.FormatInt(request.TaxCents, 10), request.Currency, hash, request.ProjectID)
+	_, err := contract.SubmitTransaction("CreateInvoice", request.ID, request.InvoiceNo, request.IssueDate, request.Issuer, request.Buyer, request.BuyerMSPID, strconv.FormatInt(request.AmountCents, 10), strconv.FormatInt(request.TaxCents, 10), request.Currency, hash, request.ProjectID, principal.Username, principal.MSPID)
 	if err != nil {
 		transactionError(c, err)
 		return
@@ -294,13 +300,10 @@ func getInvoices(c *gin.Context) {
 		transactionError(c, err)
 		return
 	}
-	var invoices []Invoice
-	if err := json.Unmarshal(result, &invoices); err != nil {
+	invoices, err := decodeList[Invoice](result)
+	if err != nil {
 		serverError(c, err)
 		return
-	}
-	if invoices == nil {
-		invoices = []Invoice{}
 	}
 	c.JSON(http.StatusOK, invoices)
 }
@@ -315,13 +318,10 @@ func getBusinessUsers(c *gin.Context) {
 		transactionError(c, err)
 		return
 	}
-	var users []BusinessUser
-	if err := json.Unmarshal(result, &users); err != nil {
+	users, err := decodeList[BusinessUser](result)
+	if err != nil {
 		serverError(c, err)
 		return
-	}
-	if users == nil {
-		users = []BusinessUser{}
 	}
 	c.JSON(http.StatusOK, users)
 }
@@ -469,13 +469,10 @@ func getProjects(c *gin.Context) {
 		transactionError(c, err)
 		return
 	}
-	var projects []Project
-	if err := json.Unmarshal(result, &projects); err != nil {
+	projects, err := decodeList[Project](result)
+	if err != nil {
 		serverError(c, err)
 		return
-	}
-	if projects == nil {
-		projects = []Project{}
 	}
 	c.JSON(http.StatusOK, projects)
 }
@@ -490,13 +487,10 @@ func getProjectEvents(c *gin.Context) {
 		transactionError(c, err)
 		return
 	}
-	var events []ProjectEvent
-	if err := json.Unmarshal(result, &events); err != nil {
+	events, err := decodeList[ProjectEvent](result)
+	if err != nil {
 		serverError(c, err)
 		return
-	}
-	if events == nil {
-		events = []ProjectEvent{}
 	}
 	c.JSON(http.StatusOK, events)
 }
@@ -576,13 +570,10 @@ func getReimbursements(c *gin.Context) {
 		transactionError(c, err)
 		return
 	}
-	var reimbursements []Reimbursement
-	if err := json.Unmarshal(result, &reimbursements); err != nil {
+	reimbursements, err := decodeList[Reimbursement](result)
+	if err != nil {
 		serverError(c, err)
 		return
-	}
-	if reimbursements == nil {
-		reimbursements = []Reimbursement{}
 	}
 	c.JSON(http.StatusOK, reimbursements)
 }
@@ -598,6 +589,19 @@ func transferInvoice(c *gin.Context) {
 	var request transferRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		badRequest(c, err)
+		return
+	}
+	principal, ok := auth.PrincipalFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "请先登录"})
+		return
+	}
+	invoice, ok := readInvoice(c)
+	if !ok {
+		return
+	}
+	if invoice.CurrentHolder != principal.Username {
+		c.JSON(http.StatusForbidden, gin.H{"error": "只有当前责任人可以发起跨组织流转"})
 		return
 	}
 	contract, ok := contractForRequest(c)
@@ -640,13 +644,10 @@ func getFlows(c *gin.Context) {
 		transactionError(c, err)
 		return
 	}
-	var flows []InvoiceFlow
-	if err := json.Unmarshal(result, &flows); err != nil {
+	flows, err := decodeList[InvoiceFlow](result)
+	if err != nil {
 		serverError(c, err)
 		return
-	}
-	if flows == nil {
-		flows = []InvoiceFlow{}
 	}
 	c.JSON(http.StatusOK, flows)
 }
@@ -661,13 +662,10 @@ func getHistory(c *gin.Context) {
 		transactionError(c, err)
 		return
 	}
-	var records []HistoryRecord
-	if err := json.Unmarshal(result, &records); err != nil {
+	records, err := decodeList[HistoryRecord](result)
+	if err != nil {
 		serverError(c, err)
 		return
-	}
-	if records == nil {
-		records = []HistoryRecord{}
 	}
 	c.JSON(http.StatusOK, records)
 }
@@ -760,6 +758,23 @@ func (r *projectRequest) normalize() {
 	r.Name = strings.TrimSpace(r.Name)
 	r.Content = strings.TrimSpace(r.Content)
 	r.ExpectedEndDate = strings.TrimSpace(r.ExpectedEndDate)
+}
+
+// decodeList treats an empty chaincode payload as an empty result set. Fabric's
+// Go contract serializer may encode a nil slice as no bytes rather than []
+// when a newly created ledger has no records yet.
+func decodeList[T any](payload []byte) ([]T, error) {
+	items := make([]T, 0)
+	if len(bytes.TrimSpace(payload)) == 0 {
+		return items, nil
+	}
+	if err := json.Unmarshal(payload, &items); err != nil {
+		return nil, err
+	}
+	if items == nil {
+		return make([]T, 0), nil
+	}
+	return items, nil
 }
 
 func badRequest(c *gin.Context, err error) {

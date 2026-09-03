@@ -40,7 +40,7 @@ invoice-ledger/
 
 浏览器打开 `http://localhost:8080`。默认复用课程 `lab7` 目录中的 Fabric Test Network；若其不在默认位置，执行脚本前设置 `FABRIC_TEST_NETWORK` 为 `test-network` 的绝对路径。
 
-如果你的网络已经部署过 `invoice` 链码 1.0 / Sequence 1，请按 [权限与升级说明.md](权限与升级说明.md) 使用 `upgrade-chaincode.sh` 升级到新版链码，而不是重复执行普通部署脚本。
+首次部署会使用当前的 `invoice` 链码 1.7 / Sequence 1。若已有旧链码定义，必须使用对应的升级脚本，不能重复执行普通部署脚本。
 
 ## 核心接口
 

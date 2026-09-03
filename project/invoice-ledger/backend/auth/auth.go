@@ -55,7 +55,7 @@ func NewService() *Service {
 		sessions:    make(map[string]session),
 	}
 	service.addDemoAccount("issuer-org1", "Org1 开票员", "Org1MSP", "ISSUER", envOr("DEMO_ISSUER_PASSWORD", "issuer123"))
-	service.addDemoAccount("holder-org2", "Org2 流转专员", "Org2MSP", "HOLDER", envOr("DEMO_HOLDER_PASSWORD", "holder123"))
+	service.addDemoAccount("holder-org2", "Org2 跨组织流转员", "Org2MSP", "HOLDER", envOr("DEMO_HOLDER_PASSWORD", "holder123"))
 	service.addDemoAccount("auditor", "审计查看员", "Org1MSP", "AUDITOR", envOr("DEMO_AUDITOR_PASSWORD", "auditor123"))
 	service.addDemoAccount("project-member", "项目组成员", "Org1MSP", "PROJECT_MEMBER", envOr("DEMO_PROJECT_MEMBER_PASSWORD", "member123"))
 	service.addDemoAccount("project-reviewer", "项目管理审核员", "Org1MSP", "PROJECT_REVIEWER", envOr("DEMO_PROJECT_REVIEWER_PASSWORD", "review123"))

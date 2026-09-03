@@ -138,17 +138,22 @@ func projectKey(id string) string                     { return projectPrefix + i
 func reimbursementKey(id string) string               { return reimbursementPrefix + id }
 func reimbursementInvoiceKey(invoiceID string) string { return reimbursementInvoicePrefix + invoiceID }
 
-// CreateInvoice writes the initial invoice record and its first issuance flow.
+// CreateInvoice writes an invoice into the normal project/reimbursement flow.
+// The buyer is an invoice business field, while initialHolder is the current
+// responsible person. This keeps optional cross-organization handoff separate
+// from the fixed reimbursement process.
 func (s *InvoiceContract) CreateInvoice(
 	ctx contractapi.TransactionContextInterface,
-	id, invoiceNo, issueDate, issuer, buyer, buyerMSPID, amountCentsText, taxCentsText, currency, dataHash, projectID string,
+	id, invoiceNo, issueDate, issuer, buyer, buyerMSPID, amountCentsText, taxCentsText, currency, dataHash, projectID, initialHolder, initialHolderMSPID string,
 ) error {
 	id = strings.TrimSpace(id)
 	invoiceNo = strings.TrimSpace(invoiceNo)
 	issuer = strings.TrimSpace(issuer)
 	buyer = strings.TrimSpace(buyer)
 	buyerMSPID = strings.TrimSpace(buyerMSPID)
-	if id == "" || invoiceNo == "" || issueDate == "" || issuer == "" || buyer == "" {
+	initialHolder = strings.TrimSpace(initialHolder)
+	initialHolderMSPID = strings.TrimSpace(initialHolderMSPID)
+	if id == "" || invoiceNo == "" || issueDate == "" || issuer == "" || buyer == "" || initialHolder == "" {
 		return fmt.Errorf("invoice fields must not be empty")
 	}
 	if strings.ContainsAny(id, "#\x00") {
@@ -164,8 +169,11 @@ func (s *InvoiceContract) CreateInvoice(
 	if err := validateBusinessMSPID(buyerMSPID); err != nil {
 		return fmt.Errorf("buyer organization: %w", err)
 	}
-	if err := s.requireActiveHolder(ctx, buyer, buyerMSPID); err != nil {
-		return fmt.Errorf("buyer: %w", err)
+	if err := validateBusinessMSPID(initialHolderMSPID); err != nil {
+		return fmt.Errorf("initial holder organization: %w", err)
+	}
+	if issuerMSPID != initialHolderMSPID {
+		return fmt.Errorf("initial holder must belong to the submitting organization %s", issuerMSPID)
 	}
 	projectID = strings.TrimSpace(projectID)
 	if projectID != "" {
@@ -214,7 +222,7 @@ func (s *InvoiceContract) CreateInvoice(
 		ID: id, InvoiceNo: invoiceNo, IssueDate: issueDate, Issuer: issuer, Buyer: buyer, BuyerMSPID: buyerMSPID,
 		AmountCents: amountCents, TaxCents: taxCents, TotalCents: amountCents + taxCents,
 		Currency: strings.ToUpper(strings.TrimSpace(currency)), DataHash: strings.ToLower(dataHash), ProjectID: projectID,
-		CurrentHolder: buyer, HolderMSPID: buyerMSPID, IssuerMSPID: issuerMSPID,
+		CurrentHolder: initialHolder, HolderMSPID: initialHolderMSPID, IssuerMSPID: issuerMSPID,
 		Status: "ISSUED", CreatedAt: now, UpdatedAt: now,
 	}
 	if invoice.Currency == "" {
@@ -223,7 +231,7 @@ func (s *InvoiceContract) CreateInvoice(
 	if err := putJSON(ctx, invoiceKey(id), invoice); err != nil {
 		return err
 	}
-	return s.createFlow(ctx, id, "ISSUE", issuer, buyer, issuerMSPID, now)
+	return s.createFlow(ctx, id, "ISSUE", issuer, initialHolder, issuerMSPID, now)
 }
 
 // TransferInvoice changes the holder only when the certificate caller belongs
