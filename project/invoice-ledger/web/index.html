@@ -22,6 +22,7 @@
         <button class="nav-item" type="button" data-view="create"><span>＋</span>发票存证</button>
         <button class="nav-item" type="button" data-view="ledger"><span>▤</span>发票账本</button>
         <button class="nav-item" type="button" data-view="reimbursements"><span>¥</span>报销支付</button>
+        <button class="nav-item" type="button" data-view="statistics"><span>◔</span>数据统计</button>
         <p>工具</p>
         <button class="nav-item" type="button" data-view="verify"><span>✓</span>发票核验</button>
       </nav>
@@ -45,9 +46,19 @@
       </section>
     </section>
 
+    <section id="statistics" class="panel statistics-panel app-view">
+      <div class="section-heading"><div><p class="eyebrow">05 · ANALYTICS</p><h2>数据统计</h2><p>基于当前 Fabric 账本中的项目、发票和报销单实时汇总。</p></div><button id="refresh-statistics" class="secondary">刷新统计</button></div>
+      <section id="statistics-summary" class="statistics-summary"><article><span>项目总预算</span><strong>—</strong><small>所有链上项目</small></article><article><span>可用资金池</span><strong>—</strong><small>尚未占用额度</small></article><article><span>冻结额度</span><strong>—</strong><small>待财务支付</small></article><article><span>累计已支付</span><strong>—</strong><small>已完成支付</small></article></section>
+      <div class="analytics-grid">
+        <article class="chart-card"><div><h3>近 7 天报销申请</h3><p>按提交日期统计申请金额。</p></div><div id="reimbursement-daily-chart" class="chart-area"></div></article>
+        <article class="chart-card"><div><h3>近 6 个月实际支付</h3><p>仅统计状态为“已支付”的报销单。</p></div><div id="payment-monthly-chart" class="chart-area"></div></article>
+        <article class="chart-card chart-card-wide"><div><h3>报销单状态分布</h3><p>直观看到待审核、需修改、已冻结和已支付的数量。</p></div><div id="reimbursement-status-chart" class="donut-chart"></div></article>
+      </div>
+    </section>
+
     <section id="organizations" class="panel organizations-panel app-view">
-      <div class="section-heading"><div><p class="eyebrow">ON-CHAIN ORGANIZATION DIRECTORY</p><h2>组织管理</h2><p>登记主体组织、内部项目组和外部协作组织；点击组织可查看其成员。登记不会自动创建 Fabric Peer、MSP 或证书。</p></div><button id="refresh-organizations" class="secondary">刷新组织</button></div>
-      <div id="organization-create-wrap" class="organization-create-wrap" hidden><form id="organization-form" class="form-grid organization-form"><label>组织名称<input name="name" required maxlength="100" placeholder="例如 浙江大学或智能制造项目组"></label><label>组织类型<select name="type" id="organization-type"><option value="PRIMARY">主体组织（学校 / 总部）</option><option value="PROJECT_TEAM">公司内部项目组</option><option value="EXTERNAL">外部组织（财务 / 合作单位）</option></select></label><label>账本接入节点<select name="mspId"><option value="Org1MSP">Org1MSP（Fabric 节点 1）</option><option value="Org2MSP">Org2MSP（Fabric 节点 2）</option></select></label><label id="organization-parent-wrap" hidden>所属主体组织<select name="parentId" id="organization-parent"><option value="">请先登记主体组织</option></select></label><label class="wide-field">组织说明<textarea name="description" maxlength="1000" placeholder="例如：负责校内科研项目的申报、执行与审核。"></textarea></label><div class="form-action"><button type="submit">登记组织并上链 <span>→</span></button></div></form><p id="organization-result" class="result" hidden></p></div>
+      <div class="section-heading"><div><p class="eyebrow">ON-CHAIN ORGANIZATION DIRECTORY</p><h2>组织管理</h2><p>登记牵头单位（学校 / 总部）、内部项目组和外部协作组织；点击组织可查看其成员。登记不会自动创建 Fabric Peer、MSP 或证书。</p></div><button id="refresh-organizations" class="secondary">刷新组织</button></div>
+      <div id="organization-create-wrap" class="organization-create-wrap" hidden><form id="organization-form" class="form-grid organization-form"><label>组织名称<input name="name" required maxlength="100" placeholder="例如 浙江大学或智能制造项目组"></label><label>组织类型<select name="type" id="organization-type"><option value="PRIMARY">牵头单位（学校 / 总部）</option><option value="PROJECT_TEAM">公司内部项目组</option><option value="EXTERNAL">外部组织（财务 / 合作单位）</option></select></label><label>账本接入节点<select name="mspId"><option value="Org1MSP">Org1MSP（Fabric 节点 1）</option><option value="Org2MSP">Org2MSP（Fabric 节点 2）</option></select></label><label id="organization-parent-wrap" hidden>所属牵头单位<select name="parentId" id="organization-parent"><option value="">请先登记牵头单位</option></select></label><label class="wide-field">组织说明<textarea name="description" maxlength="1000" placeholder="例如：负责校内科研项目的申报、执行与审核。"></textarea></label><div class="form-action"><button type="submit">登记组织并上链 <span>→</span></button></div></form><p id="organization-result" class="result" hidden></p></div>
       <p id="organization-permission-note" class="detail-sub">仅“组织管理员”可登记新的业务组织；所有登录用户均可查看组织目录。</p>
       <div id="organization-rows" class="organization-grid"><p class="empty">登录后读取链上组织目录…</p></div>
     </section>

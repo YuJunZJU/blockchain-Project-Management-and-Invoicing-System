@@ -21,11 +21,18 @@ const displayTime = (value) => {
 };
 const statusText = (status) => ({ ISSUED: '已开具', IN_CIRCULATION: '流转中', VOIDED: '已作废' }[status] || status);
 const voidRequestStatusText = (status) => ({ PENDING_REVIEW: '待开票员审核', APPROVED: '已批准并作废', REJECTED: '已驳回' }[status] || status);
+const invoiceHistoryActionText = (record) => {
+  const status = record.value?.status;
+  if (status === 'ISSUED') return '创建发票存证';
+  if (status === 'IN_CIRCULATION') return '更新发票责任人';
+  if (status === 'VOIDED') return '发票作废';
+  return record.isDelete ? '删除发票记录' : '更新发票记录';
+};
 const projectStatusText = (status) => ({ DRAFT: '草稿', PENDING_REVIEW: '待立项审核', REVISION_REQUIRED: '需修改', EXECUTING: '执行中', CLOSURE_REVIEW: '待结项审核', CLOSURE_APPROVED: '结项验收通过' }[status] || status);
 const reimbursementStatusText = (status) => ({ PENDING_REVIEW: '待报销审核', REVISION_REQUIRED: '材料需修改', APPROVED_RESERVED: '已审核，额度已冻结', PAID: '已支付' }[status] || status);
 const roleText = (role) => ({ ISSUER: '开票员', HOLDER: '跨组织流转员', AUDITOR: '审计员', PROJECT_MEMBER: '项目组成员', PROJECT_REVIEWER: '项目管理审核员', FINANCE_ADMIN: '财务管理员', ORG_ADMIN: '组织管理员' }[role] || role);
 const organizationText = (mspId) => ({ Org1MSP: 'Org1 · Fabric 节点 1', Org2MSP: 'Org2 · Fabric 节点 2' }[mspId] || mspId);
-const organizationTypeText = (type) => ({ PRIMARY: '主体组织', PROJECT_TEAM: '公司内部项目组', EXTERNAL: '外部协作组织' }[type] || type);
+const organizationTypeText = (type) => ({ PRIMARY: '牵头单位（学校 / 总部）', PROJECT_TEAM: '公司内部项目组', EXTERNAL: '外部协作组织' }[type] || type);
 const hasRole = (...roles) => Boolean(state.principal && roles.includes(state.principal.role));
 
 function switchView(view, updateHash = true) {
@@ -131,6 +138,7 @@ function applyPrincipal() {
     const organization = state.organizations.find(item => item.id === principal.organizationId) || state.registrationOrganizations.find(item => item.id === principal.organizationId);
     $('#identity-msp').textContent = organization ? `${organization.name} · ${principal.mspId}` : principal.mspId;
   }
+  if (!principal) renderStatistics();
 }
 
 function renderHolderOptions() {
@@ -152,8 +160,8 @@ function updateOrganizationParentOptions() {
   const primaryOrganizations = state.organizations.filter(item => item.type === 'PRIMARY' && item.status === 'ACTIVE');
   const selected = select.value;
   select.innerHTML = primaryOrganizations.length
-    ? `<option value="">请选择主体组织</option>${primaryOrganizations.map(item => `<option value="${safe(item.id)}">${safe(item.name)}</option>`).join('')}`
-    : '<option value="">请先登记主体组织</option>';
+    ? `<option value="">请选择牵头单位</option>${primaryOrganizations.map(item => `<option value="${safe(item.id)}">${safe(item.name)}</option>`).join('')}`
+    : '<option value="">请先登记牵头单位</option>';
   select.disabled = primaryOrganizations.length === 0;
   if (primaryOrganizations.some(item => item.id === selected)) select.value = selected;
 }
@@ -163,8 +171,8 @@ function renderOrganizations() {
   $('#organization-rows').innerHTML = organizations.length ? organizations.map(item => {
     const parent = state.organizations.find(candidate => candidate.id === item.parentId);
     const memberCount = state.users.filter(user => user.organizationId === item.id && user.status === 'ACTIVE').length;
-    return `<article class="organization-card" data-organization-detail="${safe(item.id)}"><div class="organization-card-heading"><span class="organization-type ${safe(item.type.toLowerCase())}">${safe(organizationTypeText(item.type))}</span><span class="member-status">${item.status === 'ACTIVE' ? '在用' : safe(item.status)}</span></div><h3>${safe(item.name)}</h3><p>${safe(item.description || '暂无组织说明')}</p><dl><div><dt>上级主体</dt><dd>${safe(parent?.name || '—')}</dd></div><div><dt>链上接入节点</dt><dd>${safe(organizationText(item.mspId))}</dd></div><div><dt>登记人</dt><dd>@${safe(item.createdBy)}</dd></div></dl><button class="secondary organization-members-button" type="button" data-organization-detail="${safe(item.id)}">查看成员（${memberCount}）</button></article>`;
-  }).join('') : '<p class="empty">暂无链上业务组织。请先由组织管理员登记主体组织。</p>';
+    return `<article class="organization-card" data-organization-detail="${safe(item.id)}"><div class="organization-card-heading"><span class="organization-type ${safe(item.type.toLowerCase())}">${safe(organizationTypeText(item.type))}</span><span class="member-status">${item.status === 'ACTIVE' ? '在用' : safe(item.status)}</span></div><h3>${safe(item.name)}</h3><p>${safe(item.description || '暂无组织说明')}</p><dl><div><dt>所属牵头单位</dt><dd>${safe(parent?.name || '—')}</dd></div><div><dt>链上接入节点</dt><dd>${safe(organizationText(item.mspId))}</dd></div><div><dt>登记人</dt><dd>@${safe(item.createdBy)}</dd></div></dl><button class="secondary organization-members-button" type="button" data-organization-detail="${safe(item.id)}">查看成员（${memberCount}）</button></article>`;
+  }).join('') : '<p class="empty">暂无链上业务组织。请先由组织管理员登记牵头单位。</p>';
   updateOrganizationParentOptions();
 }
 
@@ -201,7 +209,7 @@ function openOrganizationDetail(id) {
     .filter(user => user.organizationId === organization.id)
     .sort((left, right) => left.displayName.localeCompare(right.displayName, 'zh-CN'));
   $('#detail-content').innerHTML = `<p class="eyebrow">ON-CHAIN BUSINESS ORGANIZATION</p><h2 class="detail-title">${safe(organization.name)}</h2><p class="detail-sub">${safe(organizationTypeText(organization.type))} · ${safe(organization.status === 'ACTIVE' ? '在用' : organization.status)}</p>
-    <div class="details"><div><span>上级主体</span><b>${safe(parent?.name || '—')}</b></div><div><span>账本接入节点</span><b>${safe(organizationText(organization.mspId))}</b></div><div><span>登记人</span><b>@${safe(organization.createdBy)}</b></div><div><span>登记时间</span><b>${safe(displayTime(organization.createdAt))}</b></div></div>
+    <div class="details"><div><span>所属牵头单位</span><b>${safe(parent?.name || '—')}</b></div><div><span>账本接入节点</span><b>${safe(organizationText(organization.mspId))}</b></div><div><span>登记人</span><b>@${safe(organization.createdBy)}</b></div><div><span>登记时间</span><b>${safe(displayTime(organization.createdAt))}</b></div></div>
     <div class="detail-section"><h3>组织说明</h3><p>${safe(organization.description || '暂无组织说明')}</p></div>
     <div class="detail-section"><h3>组织成员（${members.length} 位）</h3>${members.length ? `<div class="organization-member-list">${members.map(user => `<div><span class="member-avatar">${safe(user.displayName.slice(0, 1))}</span><p><b>${safe(user.displayName)}</b><small>@${safe(user.username)} · ${safe(roleText(user.role))}</small></p><em>${safe(organizationText(user.mspId))}</em></div>`).join('')}</div>` : '<p class="detail-sub">该组织暂未绑定业务用户。请在注册页选择此组织后注册成员。</p>'}</div>`;
   $('#detail-dialog').showModal();
@@ -262,7 +270,7 @@ function renderProjects() {
 
 async function loadProjects() {
   if (!state.principal) return;
-  try { state.projects = await api('/projects'); renderProjects(); renderReimbursements(); }
+  try { state.projects = await api('/projects'); renderProjects(); renderReimbursements(); renderStatistics(); }
   catch (error) { $('#project-rows').innerHTML = `<tr><td colspan="6" class="empty">${safe(error.message)}</td></tr>`; showAlert(error.message, '项目读取失败'); }
 }
 
@@ -281,11 +289,89 @@ function renderReimbursements() {
 
 async function loadReimbursements() {
   if (!state.principal) return;
-  try { state.reimbursements = await api('/reimbursements'); renderReimbursements(); renderReimbursementInvoiceOptions(); }
+  try { state.reimbursements = await api('/reimbursements'); renderReimbursements(); renderReimbursementInvoiceOptions(); renderStatistics(); }
   catch (error) { $('#reimbursement-rows').innerHTML = `<tr><td colspan="6" class="empty">${safe(error.message)}</td></tr>`; showAlert(error.message, '报销单读取失败'); }
 }
 
-async function reloadBusinessData() { await Promise.all([loadUsers(), loadOrganizations(), loadInvoices(), loadProjects(), loadReimbursements()]); }
+async function reloadBusinessData() { await Promise.all([loadUsers(), loadOrganizations(), loadInvoices(), loadProjects(), loadReimbursements()]); renderStatistics(); }
+
+const shanghaiDateKey = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Date(date.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+};
+
+const shanghaiMonthKey = (value) => shanghaiDateKey(value).slice(0, 7);
+
+function recentDateKeys(days) {
+  const today = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  const keys = [];
+  for (let index = days - 1; index >= 0; index -= 1) {
+    const date = new Date(today); date.setUTCDate(today.getUTCDate() - index);
+    keys.push(date.toISOString().slice(0, 10));
+  }
+  return keys;
+}
+
+function recentMonthKeys(months) {
+  const today = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  const keys = [];
+  for (let index = months - 1; index >= 0; index -= 1) {
+    const date = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - index, 1));
+    keys.push(date.toISOString().slice(0, 7));
+  }
+  return keys;
+}
+
+function lineChart(labels, values) {
+  const width = 640; const height = 236; const left = 38; const right = 20; const top = 18; const bottom = 38;
+  const maxValue = Math.max(...values, 0); const scaleMax = Math.max(maxValue, 1); const chartWidth = width - left - right; const chartHeight = height - top - bottom;
+  const point = (value, index) => `${(left + chartWidth * index / Math.max(values.length - 1, 1)).toFixed(1)},${(top + chartHeight - (value / scaleMax) * chartHeight).toFixed(1)}`;
+  const points = values.map(point).join(' ');
+  const grid = [0, 0.5, 1].map(ratio => { const y = top + chartHeight - chartHeight * ratio; return `<line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" class="chart-grid"/>`; }).join('');
+  const dots = values.map((value, index) => { const [x, y] = point(value, index).split(','); return `<circle cx="${x}" cy="${y}" r="4" class="chart-dot"><title>${safe(labels[index])}：${safe(money(value))}</title></circle>`; }).join('');
+  const axisLabels = labels.map((label, index) => `<text x="${left + (chartWidth * index / Math.max(labels.length - 1, 1))}" y="${height - 12}" text-anchor="middle" class="chart-label">${safe(label.slice(5).replace('-', '/'))}</text>`).join('');
+  return `<svg class="chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="近七天报销申请金额折线图">${grid}<text x="${left}" y="13" class="chart-value-label">最高 ${safe(money(maxValue))}</text><polyline points="${points}" class="chart-line"/>${dots}${axisLabels}</svg>`;
+}
+
+function barChart(labels, values) {
+  const width = 640; const height = 236; const left = 28; const right = 16; const top = 18; const bottom = 40;
+  const maxValue = Math.max(...values, 0); const scaleMax = Math.max(maxValue, 1); const chartWidth = width - left - right; const chartHeight = height - top - bottom; const slot = chartWidth / values.length; const barWidth = Math.min(54, slot * 0.58);
+  const bars = values.map((value, index) => { const barHeight = value / scaleMax * chartHeight; const x = left + slot * index + (slot - barWidth) / 2; const y = top + chartHeight - barHeight; return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barHeight.toFixed(1)}" rx="4" class="chart-bar"><title>${safe(labels[index])}：${safe(money(value))}</title></rect><text x="${(x + barWidth / 2).toFixed(1)}" y="${height - 13}" text-anchor="middle" class="chart-label">${safe(labels[index].slice(2).replace('-', '/'))}</text>`; }).join('');
+  return `<svg class="chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="近六个月实际支付金额柱状图"><line x1="${left}" y1="${top + chartHeight}" x2="${width - right}" y2="${top + chartHeight}" class="chart-grid"/><text x="${left}" y="13" class="chart-value-label">最高 ${safe(money(maxValue))}</text>${bars}</svg>`;
+}
+
+function donutChart(items) {
+  const total = items.reduce((sum, item) => sum + item.value, 0);
+  if (total === 0) return '<p class="chart-empty">暂无报销单数据</p>';
+  const radius = 58; const circumference = 2 * Math.PI * radius; let offset = 0;
+  const arcs = items.filter(item => item.value > 0).map(item => { const length = item.value / total * circumference; const arc = `<circle cx="88" cy="88" r="${radius}" fill="none" stroke="${item.color}" stroke-width="22" stroke-dasharray="${length} ${circumference - length}" stroke-dashoffset="${-offset}" transform="rotate(-90 88 88)"><title>${safe(item.label)}：${item.value} 笔</title></circle>`; offset += length; return arc; }).join('');
+  const legend = items.map(item => `<li><i style="background:${item.color}"></i><span>${safe(item.label)}</span><b>${item.value} 笔</b></li>`).join('');
+  return `<div class="donut-layout"><svg class="donut-svg" viewBox="0 0 176 176" role="img" aria-label="报销单状态分布环形图"><circle cx="88" cy="88" r="${radius}" fill="none" stroke="#edf1f4" stroke-width="22"/>${arcs}<text x="88" y="83" text-anchor="middle" class="donut-total">${total}</text><text x="88" y="103" text-anchor="middle" class="chart-label">报销单</text></svg><ul class="chart-legend">${legend}</ul></div>`;
+}
+
+function renderStatistics() {
+  const summary = $('#statistics-summary');
+  if (!summary) return;
+  if (!state.principal) {
+    summary.querySelectorAll('strong').forEach(item => { item.textContent = '—'; });
+    ['#reimbursement-daily-chart', '#payment-monthly-chart', '#reimbursement-status-chart'].forEach(selector => { $(selector).innerHTML = '<p class="chart-empty">登录后读取统计数据</p>'; });
+    return;
+  }
+  const totals = state.projects.reduce((result, project) => ({ budget: result.budget + project.budgetCents, available: result.available + project.availableCents, reserved: result.reserved + project.reservedCents, paid: result.paid + project.paidCents }), { budget: 0, available: 0, reserved: 0, paid: 0 });
+  [totals.budget, totals.available, totals.reserved, totals.paid].forEach((value, index) => { summary.children[index].querySelector('strong').textContent = money(value); });
+  const dailyKeys = recentDateKeys(7); const dailyValues = dailyKeys.map(key => state.reimbursements.filter(item => shanghaiDateKey(item.createdAt) === key).reduce((sum, item) => sum + item.amountCents, 0));
+  const monthKeys = recentMonthKeys(6); const monthlyValues = monthKeys.map(key => state.reimbursements.filter(item => item.status === 'PAID' && shanghaiMonthKey(item.updatedAt) === key).reduce((sum, item) => sum + item.amountCents, 0));
+  const statusItems = [
+    { label: '待审核', value: state.reimbursements.filter(item => item.status === 'PENDING_REVIEW').length, color: '#e3ae46' },
+    { label: '需修改', value: state.reimbursements.filter(item => item.status === 'REVISION_REQUIRED').length, color: '#d66a6a' },
+    { label: '已冻结', value: state.reimbursements.filter(item => item.status === 'APPROVED_RESERVED').length, color: '#639fd6' },
+    { label: '已支付', value: state.reimbursements.filter(item => item.status === 'PAID').length, color: '#62a57a' },
+  ];
+  $('#reimbursement-daily-chart').innerHTML = lineChart(dailyKeys, dailyValues);
+  $('#payment-monthly-chart').innerHTML = barChart(monthKeys, monthlyValues);
+  $('#reimbursement-status-chart').innerHTML = donutChart(statusItems);
+}
 
 function updateMetrics() {
   const invoices = state.invoices;
@@ -368,13 +454,19 @@ async function openDetail(id) {
       <div class="detail-section"><h3>执行流转</h3>${transferForm(invoice)}</div>
       <div class="detail-section"><h3>项目组作废申请</h3>${voidRequestForm(invoice, voidRequest)}</div>
       <div class="detail-section"><h3>作废 / 红冲</h3>${voidForm(invoice)}</div>
-      <div class="detail-section"><h3>链上历史（${history.length} 笔）</h3><div class="timeline">${history.map(record => `<div><b>${safe(record.txId.slice(0, 22))}…</b><small>${safe(displayTime(record.timestamp))} · ${record.isDelete ? '删除' : `状态：${safe(record.value?.status || '')}`}</small></div>`).join('') || '<p>暂无历史记录</p>'}</div></div>`;
+      <div class="detail-section"><div class="detail-title-row"><h3>链上操作记录（${history.length} 笔）</h3><button id="toggle-transaction-ids" class="secondary compact" type="button">查看交易编码</button></div><p class="detail-sub">记录发票主数据在 Fabric 中发生的状态变化。</p><div class="timeline">${[...history].sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp)).map(record => `<div><b>${safe(invoiceHistoryActionText(record))}</b><small>${safe(displayTime(record.timestamp))} · 当前状态：${safe(statusText(record.value?.status || '已删除'))}</small><small class="transaction-id" hidden>交易编码：${safe(record.txId)}</small></div>`).join('') || '<p>暂无历史记录</p>'}</div></div>`;
     $('#detail-dialog').showModal();
     const transfer = $('#transfer-form');
     if (transfer) { bindHolderPicker(transfer); transfer.addEventListener('submit', event => submitTransfer(event, invoice.id)); }
     $('#void-form')?.addEventListener('submit', event => submitVoid(event, invoice.id));
     $('#void-request-form')?.addEventListener('submit', event => submitVoidRequest(event, invoice.id));
     $('#void-review-form')?.addEventListener('submit', event => submitVoidReview(event, invoice.id));
+    $('#toggle-transaction-ids')?.addEventListener('click', event => {
+      const visible = event.currentTarget.dataset.visible === 'true';
+      document.querySelectorAll('.transaction-id').forEach(item => { item.hidden = visible; });
+      event.currentTarget.dataset.visible = String(!visible);
+      event.currentTarget.textContent = visible ? '查看交易编码' : '隐藏交易编码';
+    });
     document.querySelector('[data-fill-verify]').addEventListener('click', event => { $('#verify-id').value = event.currentTarget.dataset.fillVerify; $('#verify-hash').value = event.currentTarget.dataset.hash; $('#detail-dialog').close(); switchView('verify'); });
   } catch (error) { showAlert(error.message, '发票详情读取失败'); }
 }
@@ -550,7 +642,7 @@ $('#organization-form').addEventListener('submit', async event => {
   const form = event.currentTarget; const payload = Object.fromEntries(new FormData(form));
   const result = $('#organization-result'); result.hidden = true;
   if (payload.type === 'PROJECT_TEAM' && !payload.parentId) {
-    showAlert('内部项目组必须选择一个已登记的主体组织。', '组织登记失败'); return;
+    showAlert('内部项目组必须选择一个已登记的牵头单位。', '组织登记失败'); return;
   }
   try {
     await api('/organizations', { method: 'POST', body: JSON.stringify(payload) });
@@ -610,6 +702,7 @@ $('#refresh').addEventListener('click', loadInvoices);
 $('#refresh-organizations').addEventListener('click', loadOrganizations);
 $('#refresh-projects').addEventListener('click', loadProjects);
 $('#refresh-reimbursements').addEventListener('click', loadReimbursements);
+$('#refresh-statistics').addEventListener('click', reloadBusinessData);
 $('#invoice-rows').addEventListener('click', event => { const id = event.target.dataset.detail; if (id) openDetail(id); });
 $('#project-rows').addEventListener('click', handleProjectAction);
 $('#reimbursement-rows').addEventListener('click', handleReimbursementAction);
