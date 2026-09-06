@@ -1,0 +1,14 @@
+# Secrets and local runtime data
+.env
+backend/data/accounts.json
+
+# Local/editor files
+*.log
+.DS_Store
+.vscode/
+
+# Local Fabric runtime: binaries, generated certificates, channel artifacts and
+# ledger data are intentionally kept out of Git. Copy this directory with the
+# project when moving to another VM/WSL machine.
+fabric-runtime/*
+!fabric-runtime/README.md

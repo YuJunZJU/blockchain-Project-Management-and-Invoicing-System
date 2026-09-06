@@ -1,0 +1,20 @@
+[
+  {
+    "displayName": "测试负责人",
+    "mspId": "Org1MSP",
+    "organizationId": "ORG-20260906-115032-B95BF5",
+    "role": "PROJECT_MEMBER",
+    "username": "alice",
+    "passwordHash": "948dd75c5846e85a6dc8a638f3f594354f4cfaeccb3e02a546067890e9e3b58e",
+    "salt": "fXMlaq6iSUEZqF15sYMCIxJjarqbVYfeNQ1QVScreHc"
+  },
+  {
+    "displayName": "测试成员",
+    "mspId": "Org1MSP",
+    "organizationId": "ORG-20260906-115350-07A912",
+    "role": "PROJECT_MEMBER",
+    "username": "bob",
+    "passwordHash": "780f15f1141acc962c548105c0d0084ed82278cdf659ea61792345db8a8b86b6",
+    "salt": "yDt9tYtigchA2DI8KuntFAtuw1cQS6bWTmM1s54nnkU"
+  }
+]
