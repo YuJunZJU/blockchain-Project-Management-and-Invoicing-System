@@ -1,0 +1,11 @@
+[
+  {
+    "displayName": "Alice",
+    "mspId": "Org1MSP",
+    "organizationId": "ORG-20260911-100346-4C3A17",
+    "role": "PROJECT_MEMBER",
+    "username": "alice",
+    "passwordHash": "be7c2f014e538a359b47198526538abff6c3fff90feb5b03a3b3b4e9d102a23c",
+    "salt": "_mybp70Zuqyo9_jB0aVSKCVI9maALl7nuSGekqUE_BE"
+  }
+]
