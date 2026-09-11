@@ -26,29 +26,30 @@ import (
 )
 
 type Invoice struct {
-	AmountCents          int64  `json:"amountCents"`
-	Buyer                string `json:"buyer"`
-	BuyerMSPID           string `json:"buyerMspId"`
-	CreatedAt            string `json:"createdAt"`
-	Currency             string `json:"currency"`
-	CurrentHolder        string `json:"currentHolder"`
-	CorrectionOf         string `json:"correctionOf"`
-	DataHash             string `json:"dataHash"`
-	HashVersion          string `json:"hashVersion"`
-	HolderMSPID          string `json:"holderMspId"`
-	ID                   string `json:"id"`
-	InvoiceNo            string `json:"invoiceNo"`
-	IssueDate            string `json:"issueDate"`
-	Issuer               string `json:"issuer"`
-	IssuerOrganizationID string `json:"issuerOrganizationId"`
-	IssuerMSPID          string `json:"issuerMspId"`
-	HolderOrganizationID string `json:"holderOrganizationId"`
-	ProjectID            string `json:"projectId"`
-	Status               string `json:"status"`
-	TaxCents             int64  `json:"taxCents"`
-	TotalCents           int64  `json:"totalCents"`
-	UpdatedAt            string `json:"updatedAt"`
-	VoidReason           string `json:"voidReason"`
+	AmountCents          int64            `json:"amountCents"`
+	Buyer                string           `json:"buyer"`
+	BuyerMSPID           string           `json:"buyerMspId"`
+	CreatedAt            string           `json:"createdAt"`
+	Currency             string           `json:"currency"`
+	CurrentHolder        string           `json:"currentHolder"`
+	CorrectionOf         string           `json:"correctionOf"`
+	DataHash             string           `json:"dataHash"`
+	HashVersion          string           `json:"hashVersion"`
+	HolderMSPID          string           `json:"holderMspId"`
+	ID                   string           `json:"id"`
+	InvoiceNo            string           `json:"invoiceNo"`
+	IssueDate            string           `json:"issueDate"`
+	Issuer               string           `json:"issuer"`
+	IssuerOrganizationID string           `json:"issuerOrganizationId"`
+	IssuerMSPID          string           `json:"issuerMspId"`
+	HolderOrganizationID string           `json:"holderOrganizationId"`
+	ProjectID            string           `json:"projectId"`
+	Status               string           `json:"status"`
+	TaxCents             int64            `json:"taxCents"`
+	TotalCents           int64            `json:"totalCents"`
+	UpdatedAt            string           `json:"updatedAt"`
+	VoidReason           string           `json:"voidReason"`
+	PendingTransfer      *InvoiceTransfer `json:"pendingTransfer,omitempty"`
 }
 
 type InvoiceFlow struct {
@@ -535,7 +536,15 @@ func getInvoices(c *gin.Context) {
 	visible := make([]Invoice, 0, len(invoices))
 	for _, invoice := range invoices {
 		if !invoiceVisibleTo(principal, invoice, projectByID, organizations) {
-			continue
+			transfer, transferErr := readPendingTransferForPrincipal(contract, invoice.ID, principal)
+			if transferErr != nil {
+				transactionError(c, transferErr)
+				return
+			}
+			if transfer == nil {
+				continue
+			}
+			invoice.PendingTransfer = transfer
 		}
 		summary.Total++
 		if invoice.Status == "IN_CIRCULATION" {
@@ -545,7 +554,7 @@ func getInvoices(c *gin.Context) {
 			summary.AmountCents += invoice.TotalCents
 		}
 		searchable := strings.ToLower(strings.Join([]string{invoice.ID, invoice.InvoiceNo, invoice.Issuer, invoice.Buyer, invoice.CurrentHolder}, " "))
-		if invoiceVisibleTo(principal, invoice, projectByID, organizations) && (keyword == "" || strings.Contains(searchable, keyword)) {
+		if keyword == "" || strings.Contains(searchable, keyword) {
 			visible = append(visible, invoice)
 		}
 	}
@@ -1237,6 +1246,37 @@ func invoiceVisibleTo(principal auth.Principal, invoice Invoice, projects map[st
 	return invoice.IssuerOrganizationID == "" && (invoice.IssuerMSPID == principal.MSPID || invoice.HolderMSPID == principal.MSPID)
 }
 
+func pendingTransferVisibleTo(principal auth.Principal, transfer *InvoiceTransfer) bool {
+	if transfer == nil || transfer.Status != "PENDING" {
+		return false
+	}
+	if principal.Role != "ISSUER" && principal.Role != "HOLDER" && principal.Role != "PROJECT_MEMBER" {
+		return false
+	}
+	return transfer.To == principal.Username && transfer.ToMSPID == principal.MSPID
+}
+
+func readPendingTransferForPrincipal(contract *client.Contract, invoiceID string, principal auth.Principal) (*InvoiceTransfer, error) {
+	if principal.Role != "ISSUER" && principal.Role != "HOLDER" && principal.Role != "PROJECT_MEMBER" {
+		return nil, nil
+	}
+	result, err := contract.EvaluateTransaction("ReadInvoiceTransfer", invoiceID)
+	if err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var transfer InvoiceTransfer
+	if err := json.Unmarshal(result, &transfer); err != nil {
+		return nil, err
+	}
+	if !pendingTransferVisibleTo(principal, &transfer) {
+		return nil, nil
+	}
+	return &transfer, nil
+}
+
 func getInvoice(c *gin.Context) {
 	invoice, ok := readInvoice(c)
 	if ok {
@@ -1543,8 +1583,16 @@ func readInvoice(c *gin.Context) (*Invoice, bool) {
 		return nil, false
 	}
 	if !invoiceVisibleTo(principal, invoice, projectByID, organizations) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "无权查看该业务组织的发票"})
-		return nil, false
+		transfer, transferErr := readPendingTransferForPrincipal(contract, invoice.ID, principal)
+		if transferErr != nil {
+			transactionError(c, transferErr)
+			return nil, false
+		}
+		if transfer == nil {
+			c.JSON(http.StatusForbidden, gin.H{"error": "无权查看该业务组织的发票"})
+			return nil, false
+		}
+		invoice.PendingTransfer = transfer
 	}
 	return &invoice, true
 }

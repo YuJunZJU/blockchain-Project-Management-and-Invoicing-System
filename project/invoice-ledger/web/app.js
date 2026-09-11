@@ -544,12 +544,17 @@ function updateMetrics() {
 function renderInvoices() {
   const list = state.invoices;
   $('#invoice-count').textContent = `共 ${state.invoiceTotal} 条记录${state.invoiceUpdatedAt ? ` · 更新于 ${displayTime(state.invoiceUpdatedAt)}` : ''}`;
-  $('#invoice-rows').innerHTML = list.length ? list.map(item => `<tr>
-    <td><strong>${safe(item.invoiceNo)}</strong><small>${safe(item.id)} · ${safe(item.issueDate)}</small></td>
-    <td><strong>${safe(item.issuer)}</strong><small>→ ${safe(item.buyer)}</small></td>
-    <td>${money(item.totalCents, item.currency)}</td><td>${safe(item.currentHolder)}<small>${safe(item.holderMspId || '旧版记录')}</small></td>
-    <td><span class="status ${item.status === 'IN_CIRCULATION' ? 'circulating' : item.status === 'VOIDED' ? 'voided' : ''}">${statusText(item.status)}</span></td>
-    <td><button class="link-button" data-detail="${safe(item.id)}">详情</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty">没有符合条件的发票记录</td></tr>';
+  $('#invoice-rows').innerHTML = list.length ? list.map(item => {
+    const awaitingTransfer = item.pendingTransfer?.status === 'PENDING' && item.pendingTransfer.to === state.principal?.username;
+    const displayedStatus = awaitingTransfer ? '待你确认交接' : statusText(item.status);
+    const statusClass = awaitingTransfer || item.status === 'IN_CIRCULATION' ? 'circulating' : item.status === 'VOIDED' ? 'voided' : '';
+    return `<tr>
+      <td><strong>${safe(item.invoiceNo)}</strong><small>${safe(item.id)} · ${safe(item.issueDate)}</small></td>
+      <td><strong>${safe(item.issuer)}</strong><small>→ ${safe(item.buyer)}</small></td>
+      <td>${money(item.totalCents, item.currency)}</td><td>${safe(item.currentHolder)}<small>${safe(item.holderMspId || '旧版记录')}</small></td>
+      <td><span class="status ${statusClass}">${safe(displayedStatus)}</span></td>
+      <td><button class="link-button" data-detail="${safe(item.id)}">详情</button></td></tr>`;
+  }).join('') : '<tr><td colspan="6" class="empty">没有符合条件的发票记录</td></tr>';
 }
 
 async function loadInvoices() {

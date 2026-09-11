@@ -74,6 +74,31 @@ func TestBuiltInRoleVisibilityScopes(t *testing.T) {
 	}
 }
 
+func TestPendingTransferIsVisibleOnlyToSelectedRecipient(t *testing.T) {
+	transfer := &InvoiceTransfer{InvoiceID: "invoice-1", From: "alice", To: "holder-org2", ToMSPID: "Org2MSP", Status: "PENDING"}
+	holder := auth.Principal{Username: "holder-org2", MSPID: "Org2MSP", Role: "HOLDER"}
+	if !pendingTransferVisibleTo(holder, transfer) {
+		t.Fatal("selected recipient must see a pending transfer before accepting it")
+	}
+
+	wrongUser := holder
+	wrongUser.Username = "another-holder"
+	if pendingTransferVisibleTo(wrongUser, transfer) {
+		t.Fatal("another user in the target MSP must not see the pending transfer")
+	}
+
+	wrongMSP := holder
+	wrongMSP.MSPID = "Org1MSP"
+	if pendingTransferVisibleTo(wrongMSP, transfer) {
+		t.Fatal("recipient identity must also match the target MSP")
+	}
+
+	transfer.Status = "ACCEPTED"
+	if pendingTransferVisibleTo(holder, transfer) {
+		t.Fatal("completed transfers must use normal holder visibility")
+	}
+}
+
 func TestProjectVisibleToBootstrapReviewer(t *testing.T) {
 	project := Project{ID: "project-1", OrganizationID: "team-a", ApplicantMSPID: "Org1MSP"}
 	invoice := Invoice{ID: "invoice-1", ProjectID: project.ID, IssuerOrganizationID: "team-a", HolderOrganizationID: "team-a"}

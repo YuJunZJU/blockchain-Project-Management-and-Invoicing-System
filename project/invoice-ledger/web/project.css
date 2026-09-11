@@ -295,6 +295,7 @@ dialog { border-radius: 24px; box-shadow: 0 24px 80px #1d1d1f40; } dialog::backd
 .verify-panel .verify-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 15px 16px; margin-top: 22px; }
 .verify-panel .verify-form .form-action { grid-column: span 3; justify-content: flex-end; }.verify-panel .verify-form .form-action button { width: auto; min-width: 160px; }
 .detail-error { display: grid; gap: 3px; margin: 0 0 18px; padding: 12px 14px; border: 1px solid #ffb8b2; border-left: 4px solid #ff453a; border-radius: 12px; background: #fff7f7; color: #a21b15; }
+.detail-error[hidden] { display: none; }
 .pagination { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 16px; color: #6e6e73; font-size: 13px; }
 
 @media (max-width: 1000px) { .container { padding: 48px 30px 72px; }.app-shell { padding-left: 250px; }.sidebar { width: 250px; } }

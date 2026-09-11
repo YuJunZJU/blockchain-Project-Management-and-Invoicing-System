@@ -1,20 +1,11 @@
 [
   {
-    "displayName": "测试负责人",
+    "displayName": "Alice",
     "mspId": "Org1MSP",
-    "organizationId": "ORG-20260906-115032-B95BF5",
+    "organizationId": "ORG-20260911-100346-4C3A17",
     "role": "PROJECT_MEMBER",
     "username": "alice",
-    "passwordHash": "948dd75c5846e85a6dc8a638f3f594354f4cfaeccb3e02a546067890e9e3b58e",
-    "salt": "fXMlaq6iSUEZqF15sYMCIxJjarqbVYfeNQ1QVScreHc"
-  },
-  {
-    "displayName": "测试成员",
-    "mspId": "Org1MSP",
-    "organizationId": "ORG-20260906-115350-07A912",
-    "role": "PROJECT_MEMBER",
-    "username": "bob",
-    "passwordHash": "780f15f1141acc962c548105c0d0084ed82278cdf659ea61792345db8a8b86b6",
-    "salt": "yDt9tYtigchA2DI8KuntFAtuw1cQS6bWTmM1s54nnkU"
+    "passwordHash": "be7c2f014e538a359b47198526538abff6c3fff90feb5b03a3b3b4e9d102a23c",
+    "salt": "_mybp70Zuqyo9_jB0aVSKCVI9maALl7nuSGekqUE_BE"
   }
 ]
